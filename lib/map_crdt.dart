@@ -6,11 +6,79 @@ import 'vector_clock.dart';
 import 'record.dart';
 import 'distributed_clock.dart';
 
-class MapCrdt<K, V> {
+class _MapCrdtBase<K, V> {
+  final Map<K, Record<V>> _records;
+
+  _MapCrdtBase(this._records);
+
+  _MapCrdtBase.from(
+    _MapCrdtBase<K, V> other, {
+    K Function(K)? cloneKey,
+    V Function(V)? cloneValue,
+  }) : _records = Map.from(other._records).map((key, value) => MapEntry(
+              cloneKey != null ? cloneKey(key) : key,
+              Record<V>.from(value, cloneValue: cloneValue),
+            ));
+
+  Map<K, Record<V>> get records => _records;
+
+  Map<K, V> get map => (Map<K, Record<V>>.from(_records)
+        ..removeWhere((key, value) => value.isDeleted))
+      .map((key, value) => MapEntry(key, value.value!));
+
+  Iterable<V> get values => (List<Record<V>>.from(_records.values)
+        ..removeWhere((record) => record.isDeleted))
+      .map((record) => record.value!);
+
+  /// Merge records with other records and updates [vectorClock].
+  /// Assumes all records have been updated to contain nodes [this] and [other].
+  /// Important: Records of [other] will be changed. Use MapCrdt.from(other, cloneKey: ..., cloneValue: ...) to keep them intact.
+  void _mergeRecords(_MapCrdtBase<K, V> other, VectorClock vectorClock) {
+    final updatedRecords = other._records
+      ..removeWhere((key, value) {
+        vectorClock.merge(value.clock.vectorClock);
+        final localRecord = _records[key];
+
+        return localRecord != null && localRecord.clock >= value.clock;
+      });
+    _records.addAll(updatedRecords);
+  }
+
+  void _insertClockValue(int pos, [int value = 0]) {
+    _records.values.forEach((record) {
+      record.clock.vectorClock.insertClockValue(pos, value);
+    });
+  }
+
+  Map<String, dynamic> recordsToJson({
+    Function(K)? keyEncode,
+    Function(V)? valueEncode,
+  }) {
+    return _records.map((key, value) => MapEntry(
+          keyEncode != null ? keyEncode(key) : key,
+          value.toJson(valueEncode: valueEncode),
+        ));
+  }
+
+  static Map<K, Record<V>> recordsFromJson<K, V>(
+    Map json, {
+    K Function(dynamic)? keyDecode,
+    V Function(dynamic)? valueDecode,
+  }) {
+    return json.map((key, value) => MapEntry(
+          keyDecode != null ? keyDecode(key) : key as K,
+          Record<V>.fromJson(
+            value as Map<String, dynamic>,
+            valueDecode: valueDecode,
+          ),
+        ));
+  }
+}
+
+class MapCrdt<K, V> extends _MapCrdtBase<K, V> {
   final String _node;
   final List<String> _nodes;
   final VectorClock _vectorClock;
-  final Map<K, Record<V>> _records;
   late int _nodeClockIndex;
 
   MapCrdt(
@@ -22,27 +90,13 @@ class MapCrdt<K, V> {
   })  : _nodes = nodes != null ? List.from(nodes) : [_node],
         _vectorClock =
             vectorClock ?? VectorClock(nodes == null ? 1 : nodes.length),
-        _records = records ?? {} {
+        super(records ?? {}) {
     if (_vectorClock.numNodes != _nodes.length) {
       throw ArgumentError('vector clock has invalid number of nodes');
     }
     _nodes.sort();
     _updateNodeClockIndex();
-
-    if (validateRecords) {
-      _records.forEach((key, value) {
-        if (!hasNode(value.clock.node)) {
-          throw ArgumentError(
-            'node list doesn\'t contain the node of record',
-          );
-        }
-        if (value.clock.vectorClock.numNodes != _vectorClock.numNodes) {
-          throw ArgumentError(
-            'record vector clock has different number of nodes',
-          );
-        }
-      });
-    }
+    if (validateRecords) _validateRecords(_records);
   }
 
   MapCrdt.from(
@@ -52,24 +106,12 @@ class MapCrdt<K, V> {
   })  : _node = other._node,
         _nodes = List.from(other._nodes),
         _vectorClock = VectorClock.from(other._vectorClock),
-        _records = Map.from(other._records).map((key, value) => MapEntry(
-              cloneKey != null ? cloneKey(key) : key,
-              Record<V>.from(value, cloneValue: cloneValue),
-            )),
-        _nodeClockIndex = other._nodeClockIndex;
+        _nodeClockIndex = other._nodeClockIndex,
+        super.from(other, cloneKey: cloneKey, cloneValue: cloneValue);
 
   String get node => _node;
   VectorClock get vectorClock => _vectorClock;
   UnmodifiableListView<String> get nodes => UnmodifiableListView(_nodes);
-  Map<K, Record<V>> get records => _records;
-
-  Map<K, V> get map => (Map<K, Record<V>>.from(_records)
-        ..removeWhere((key, value) => value.isDeleted))
-      .map((key, value) => MapEntry(key, value.value!));
-
-  Iterable<V> get values => (List<Record<V>>.from(_records.values)
-        ..removeWhere((record) => record.isDeleted))
-      .map((record) => record.value!);
 
   bool hasNode(String node) {
     return binarySearch(_nodes, node) != -1;
@@ -97,27 +139,31 @@ class MapCrdt<K, V> {
     if (insertPos < _nodes.length && _nodes[insertPos] == node) return;
     _nodes.insert(insertPos, node);
     _vectorClock.insertClockValue(insertPos);
-    _records.values.forEach((record) {
-      record.clock.vectorClock.insertClockValue(insertPos);
-    });
+    _insertClockValue(insertPos);
     _updateNodeClockIndex();
   }
 
-  /// Important: the other crdt will get changed. Use MapCrdt.from(other, cloneKey: ..., cloneValue: ...) to keep it intact.
+  /// Important: Records of [other] will be changed. Use MapCrdt.from(other, cloneKey: ..., cloneValue: ...) to keep them intact.
   void merge(MapCrdt<K, V> other) {
     other.nodes.forEach((node) => addNode(node));
     nodes.forEach((node) => other.addNode(node));
-
-    final updatedRecords = other._records
-      ..removeWhere((key, value) {
-        _vectorClock.merge(value.clock.vectorClock);
-        final localRecord = _records[key];
-
-        return localRecord != null && localRecord.clock >= value.clock;
-      });
-    _records.addAll(updatedRecords);
-
+    _mergeRecords(other, _vectorClock);
     _vectorClock.increment(_nodeClockIndex);
+  }
+
+  void _validateRecords(Map<K, Record<V>> records) {
+    _records.forEach((key, value) {
+      if (!hasNode(value.clock.node)) {
+        throw ArgumentError(
+          'node list doesn\'t contain the node of record',
+        );
+      }
+      if (value.clock.vectorClock.numNodes != _vectorClock.numNodes) {
+        throw ArgumentError(
+          'record vector clock has different number of nodes',
+        );
+      }
+    });
   }
 
   Record<V> _makeRecord(V? value) {
@@ -147,10 +193,7 @@ class MapCrdt<K, V> {
       'node': _node,
       'nodes': _nodes,
       'vectorClock': List<int>.from(_vectorClock.value),
-      'records': _records.map((key, value) => MapEntry(
-            keyEncode != null ? keyEncode(key) : key,
-            value.toJson(valueEncode: valueEncode),
-          )),
+      'records': recordsToJson(keyEncode: keyEncode, valueEncode: valueEncode),
     };
   }
 
@@ -165,13 +208,11 @@ class MapCrdt<K, V> {
       vectorClock: VectorClock.fromList(
         (json['vectorClock'] as List).map((e) => e as int).toList(),
       ),
-      records: (json['records'] as Map).map((key, value) => MapEntry(
-            keyDecode != null ? keyDecode(key) : key as K,
-            Record<V>.fromJson(
-              value as Map<String, dynamic>,
-              valueDecode: valueDecode,
-            ),
-          )),
+      records: _MapCrdtBase.recordsFromJson(
+        json['records'],
+        keyDecode: keyDecode,
+        valueDecode: valueDecode,
+      ),
     );
   }
 }
