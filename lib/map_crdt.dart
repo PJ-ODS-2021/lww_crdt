@@ -30,23 +30,38 @@ class _MapCrdtBase<K, V> {
         ..removeWhere((record) => record.isDeleted))
       .map((record) => record.value!);
 
+  Record<V>? getRecord(K key) => _records[key];
+  V? get(K key) => getRecord(key)?.value;
+
   /// Merge records with other records and updates [vectorClock].
   /// Assumes all records have been updated to contain nodes [this] and [other].
   /// Important: Records of [other] will be changed. Use MapCrdt.from(other, cloneKey: ..., cloneValue: ...) to keep them intact.
   void _mergeRecords(_MapCrdtBase<K, V> other, VectorClock vectorClock) {
     final updatedRecords = other._records
-      ..removeWhere((key, value) {
-        vectorClock.merge(value.clock.vectorClock);
+      ..removeWhere((key, record) {
+        vectorClock.merge(record.clock.vectorClock);
         final localRecord = _records[key];
 
-        return localRecord != null && localRecord.clock >= value.clock;
+        if (localRecord == null) return false;
+        final value = record.value;
+        final localValue = localRecord.value;
+        if (localValue is MapCrdtNode &&
+            value.runtimeType == localValue.runtimeType) {
+          localValue.merge(value as MapCrdtNode);
+
+          return true;
+        } else {
+          return localRecord.clock >= record.clock;
+        }
       });
     _records.addAll(updatedRecords);
   }
 
-  void _insertClockValue(int pos, [int value = 0]) {
+  void _insertClockValue(int pos, [int initialClockValue = 0]) {
     _records.values.forEach((record) {
-      record.clock.vectorClock.insertClockValue(pos, value);
+      record.clock.vectorClock.insertClockValue(pos, initialClockValue);
+      final value = record.value;
+      if (value is MapCrdtNode) value._insertClockValue(pos, initialClockValue);
     });
   }
 
@@ -72,6 +87,51 @@ class _MapCrdtBase<K, V> {
             valueDecode: valueDecode,
           ),
         ));
+  }
+}
+
+class MapCrdtNode<K, V> extends _MapCrdtBase<K, V> {
+  final MapCrdt<dynamic, MapCrdtNode<K, V>> _parent;
+
+  MapCrdtNode(
+    this._parent, {
+    Map<K, Record<V>>? records,
+    bool validateRecord = true,
+  }) : super(records ?? {}) {
+    if (validateRecord) _parent._validateRecords(_records);
+  }
+
+  /// Warning: Doesn't clone the parent. Specify [parent] to use a new parent.
+  MapCrdtNode.from(
+    MapCrdtNode<K, V> other, {
+    MapCrdt<dynamic, MapCrdtNode<K, V>>? parent,
+    K Function(K)? cloneKey,
+    V Function(V)? cloneValue,
+  })  : _parent = parent ?? other._parent,
+        super.from(other, cloneKey: cloneKey, cloneValue: cloneValue);
+
+  MapCrdt<dynamic, MapCrdtNode<K, V>> get parent => _parent;
+
+  /// Important: Records of [other] will be changed. Use MapCrdt.from(other, cloneKey: ..., cloneValue: ...) to keep them intact.
+  void merge(MapCrdtNode<K, V> other, {bool mergeParentNodes = true}) {
+    if (mergeParentNodes) _parent.mergeNodes(other._parent);
+    _mergeRecords(other, _parent.vectorClock);
+  }
+
+  void putRecord(K key, Record<V> record, {bool validateRecord = true}) {
+    if (validateRecord) _parent._validateRecord(record);
+    _records[key] = record;
+  }
+
+  void put(K key, V? value) {
+    putRecord(key, _parent._makeRecord(value));
+  }
+
+  void delete(K key) => put(key, null);
+
+  @override
+  String toString() {
+    return 'CrdtNode$records';
   }
 }
 
@@ -117,12 +177,8 @@ class MapCrdt<K, V> extends _MapCrdtBase<K, V> {
     return binarySearch(_nodes, node) != -1;
   }
 
-  void putRecord(K key, Record<V> record) {
-    if (record.clock.vectorClock.numNodes != _vectorClock.numNodes) {
-      throw ArgumentError(
-        'record vector clock does not have the same number of nodes as this crdt',
-      );
-    }
+  void putRecord(K key, Record<V> record, {bool validateRecord = true}) {
+    if (validateRecord) _validateRecord(record);
     _records[key] = record;
   }
 
@@ -131,8 +187,6 @@ class MapCrdt<K, V> extends _MapCrdtBase<K, V> {
   }
 
   void delete(K key) => put(key, null);
-  Record<V>? getRecord(K key) => _records[key];
-  V? get(K key) => getRecord(key)?.value;
 
   void addNode(String node) {
     final insertPos = lowerBound(_nodes, node);
@@ -143,30 +197,35 @@ class MapCrdt<K, V> extends _MapCrdtBase<K, V> {
     _updateNodeClockIndex();
   }
 
-  /// Important: Records of [other] will be changed. Use MapCrdt.from(other, cloneKey: ..., cloneValue: ...) to keep them intact.
-  void merge(MapCrdt<K, V> other) {
+  void mergeNodes(MapCrdt other) {
     other.nodes.forEach((node) => addNode(node));
     nodes.forEach((node) => other.addNode(node));
+  }
+
+  /// Important: Records of [other] will be changed. Use MapCrdt.from(other, cloneKey: ..., cloneValue: ...) to keep them intact.
+  void merge(MapCrdt<K, V> other) {
+    mergeNodes(other);
     _mergeRecords(other, _vectorClock);
     _vectorClock.increment(_nodeClockIndex);
   }
 
-  void _validateRecords(Map<K, Record<V>> records) {
-    _records.forEach((key, value) {
-      if (!hasNode(value.clock.node)) {
-        throw ArgumentError(
-          'node list doesn\'t contain the node of record',
-        );
-      }
-      if (value.clock.vectorClock.numNodes != _vectorClock.numNodes) {
-        throw ArgumentError(
-          'record vector clock has different number of nodes',
-        );
-      }
-    });
+  void _validateRecord(Record record) {
+    if (!hasNode(record.clock.node)) {
+      throw ArgumentError(
+        'node list doesn\'t contain the node of the record',
+      );
+    }
+    if (record.clock.vectorClock.numNodes != _vectorClock.numNodes) {
+      throw ArgumentError(
+        'record vector clock does not have the same number of nodes as this crdt',
+      );
+    }
   }
 
-  Record<V> _makeRecord(V? value) {
+  void _validateRecords<S>(Map<S, Record> records) =>
+      _records.values.forEach(_validateRecord);
+
+  Record<S> _makeRecord<S>(S? value) {
     return Record(
       clock: _makeDistributedClock(),
       value: value,
