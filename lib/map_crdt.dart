@@ -33,6 +33,35 @@ class _MapCrdtBase<K, V> {
   Record<V>? getRecord(K key) => _records[key];
   V? get(K key) => getRecord(key)?.value;
 
+  /// Update all records using the [updateRecord] function.
+  ///
+  /// This function can be used to deep clone MapCrdt with MapCrdtNode values.
+  void updateRecords(Record<V> Function(K, Record<V>) updateRecord) {
+    _records.updateAll((key, record) => updateRecord(key, record));
+  }
+
+  /// Update a single record if it exists.
+  void updateRecord(K key, Record<V> Function(Record<V>) updateRecord) {
+    _records.update(key, updateRecord);
+  }
+
+  /// Update all values to records that are note deleted using the [updateValue] function.
+  void updateValues(V Function(K, V) updateValue) {
+    _records.updateAll((k, record) => record.isDeleted
+        ? record
+        : Record(clock: record.clock, value: updateValue(k, record.value!)));
+  }
+
+  /// Update a single value if it exists and is not deleted.
+  void updateValue(K key, V Function(V) updateRecord) {
+    _records.update(
+      key,
+      (record) => record.isDeleted
+          ? record
+          : Record(clock: record.clock, value: updateRecord(record.value!)),
+    );
+  }
+
   /// Merge records with other records and updates [vectorClock].
   /// Assumes all records have been updated to contain nodes [this] and [other].
   /// Important: Records of [other] will be changed. Use MapCrdt.from(other, cloneKey: ..., cloneValue: ...) to keep them intact.
@@ -159,6 +188,13 @@ class MapCrdt<K, V> extends _MapCrdtBase<K, V> {
     if (validateRecords) _validateRecords(_records);
   }
 
+  /// Create a copy of [other].
+  ///
+  /// Use [cloneKey] to provide a function to clone the key.
+  /// Use [cloneValue] to provide a function to clone the value.
+  ///
+  /// To clone deep clone values that require the parent CRDT (e.g. MapCrdtNode),
+  /// don't provide [cloneValue] and call [updateValues] or [updateRecords] later.
   MapCrdt.from(
     MapCrdt<K, V> other, {
     K Function(K)? cloneKey,
@@ -188,6 +224,7 @@ class MapCrdt<K, V> extends _MapCrdtBase<K, V> {
 
   void delete(K key) => put(key, null);
 
+  /// Add a node to the internal vector clock and all vector clocks of existing records.
   void addNode(String node) {
     final insertPos = lowerBound(_nodes, node);
     if (insertPos < _nodes.length && _nodes[insertPos] == node) return;
@@ -197,6 +234,7 @@ class MapCrdt<K, V> extends _MapCrdtBase<K, V> {
     _updateNodeClockIndex();
   }
 
+  /// Add all nodes from [other] to [this] and all nodes of [this] to [other].
   void mergeNodes(MapCrdt other) {
     other.nodes.forEach((node) => addNode(node));
     nodes.forEach((node) => other.addNode(node));
