@@ -1,5 +1,6 @@
 import 'package:test/test.dart';
 import 'package:lww_crdt/lww_crdt.dart';
+import 'util/value_type.dart';
 
 MapCrdt<String, MapCrdtNode<String, String>> _deepCloneCrdt(
   MapCrdt<String, MapCrdtNode<String, String>> crdt,
@@ -85,5 +86,212 @@ void main() {
     crdt2Node.delete('key1');
     crdt1.merge(_deepCloneCrdt(crdt2));
     expect(crdt1Node.map, {'key2': 'value2'});
+  });
+
+  test('map crdt node to json', () {
+    final crdt = MapCrdt<String, MapCrdtNode<String, String>>('node1');
+    final crdtNode = MapCrdtNode<String, String>(crdt);
+    crdt.put('node1', crdtNode);
+    crdtNode.put('key1', 'value1');
+
+    final key1Clock = crdtNode.getRecord('key1')!.clock;
+    final expectedCrdtNodeJson = {
+      'key1': {
+        'clock': key1Clock.toJson(),
+        'value': 'value1',
+      },
+    };
+    expect(crdtNode.toJson(), expectedCrdtNodeJson);
+
+    final node1Clock = crdt.getRecord('node1')!.clock;
+    expect(crdt.toJson(valueEncode: (node) => node.toJson()), {
+      'node': 'node1',
+      'nodes': ['node1'],
+      'vectorClock': crdt.vectorClock.value.toList(),
+      'records': {
+        'node1': {
+          'clock': node1Clock.toJson(),
+          'value': expectedCrdtNodeJson,
+        },
+      },
+    });
+  });
+
+  test('map crdt node to json custom value type', () {
+    final crdt = MapCrdt<String, MapCrdtNode<String, ValueType>>('node1');
+    final crdtNode = MapCrdtNode<String, ValueType>(crdt);
+    crdt.put('node1', crdtNode);
+    crdtNode.put('key1', ValueType('value1'));
+
+    final valueEncodeFunc = (ValueType v) => {'value': v.value};
+
+    final key1Clock = crdtNode.getRecord('key1')!.clock;
+    final expectedCrdtNodeJson = {
+      'key1': {
+        'clock': key1Clock.toJson(),
+        'value': {'value': 'value1'},
+      },
+    };
+    expect(
+      crdtNode.toJson(valueEncode: valueEncodeFunc),
+      expectedCrdtNodeJson,
+    );
+
+    final node1Clock = crdt.getRecord('node1')!.clock;
+    expect(
+      crdt.toJson(
+        valueEncode: (node) => node.toJson(valueEncode: valueEncodeFunc),
+      ),
+      {
+        'node': 'node1',
+        'nodes': ['node1'],
+        'vectorClock': crdt.vectorClock.value.toList(),
+        'records': {
+          'node1': {
+            'clock': node1Clock.toJson(),
+            'value': expectedCrdtNodeJson,
+          },
+        },
+      },
+    );
+  });
+
+  test('map crdt node from json', () {
+    final vectorClock = VectorClock(1);
+    final node1Clock = DistributedClock(
+      vectorClock..increment(0),
+      DateTime.now().millisecondsSinceEpoch,
+      'node1',
+    );
+    final key1Clock = DistributedClock(
+      vectorClock..increment(0),
+      DateTime.now().millisecondsSinceEpoch,
+      'node1',
+    );
+    final crdtNodeJson = {
+      'key1': {
+        'clock': key1Clock.toJson(),
+        'value': 'value1',
+      },
+    };
+    expect(
+      MapCrdtNode<String, String>.fromJson(
+        crdtNodeJson,
+        parent: MapCrdt<String, MapCrdtNode<String, String>>('node1'),
+      ).records,
+      {
+        'key1': Record<String>(
+          clock: key1Clock,
+          value: 'value1',
+        ),
+      },
+    );
+
+    final crdtJson = {
+      'node': 'node1',
+      'nodes': ['node1'],
+      'vectorClock': vectorClock.value.toList(),
+      'records': {
+        'node1': {
+          'clock': node1Clock.toJson(),
+          'value': crdtNodeJson,
+        },
+      },
+    };
+    final decodedCrdt = MapCrdt<String, MapCrdtNode<String, String>>.fromJson(
+      crdtJson,
+      lateValueDecode: (crdt, json) => MapCrdtNode<String, String>.fromJson(
+        json,
+        parent: crdt,
+      ),
+    );
+    expect(
+      decodedCrdt.records,
+      {
+        'node1': Record<MapCrdtNode<String, String>>(
+          clock: node1Clock,
+          value: MapCrdtNode<String, String>(
+            decodedCrdt,
+            records: {
+              'key1': Record<String>(
+                clock: key1Clock,
+                value: 'value1',
+              ),
+            },
+          ),
+        ),
+      },
+    );
+  });
+
+  test('map crdt node from json custom value type', () {
+    final vectorClock = VectorClock(1);
+    final node1Clock = DistributedClock(
+      vectorClock..increment(0),
+      DateTime.now().millisecondsSinceEpoch,
+      'node1',
+    );
+    final key1Clock = DistributedClock(
+      vectorClock..increment(0),
+      DateTime.now().millisecondsSinceEpoch,
+      'node1',
+    );
+    final crdtNodeJson = {
+      'key1': {
+        'clock': key1Clock.toJson(),
+        'value': {'value': 'value1'},
+      },
+    };
+    expect(
+      MapCrdtNode<String, ValueType>.fromJson(
+        crdtNodeJson,
+        parent: MapCrdt<String, MapCrdtNode<String, ValueType>>('node1'),
+        valueDecode: (v) => ValueType(v['value'] as String),
+      ).records,
+      {
+        'key1': Record<ValueType>(
+          clock: key1Clock,
+          value: ValueType('value1'),
+        ),
+      },
+    );
+
+    final crdtJson = {
+      'node': 'node1',
+      'nodes': ['node1'],
+      'vectorClock': vectorClock.value.toList(),
+      'records': {
+        'node1': {
+          'clock': node1Clock.toJson(),
+          'value': crdtNodeJson,
+        },
+      },
+    };
+    final decodedCrdt =
+        MapCrdt<String, MapCrdtNode<String, ValueType>>.fromJson(
+      crdtJson,
+      lateValueDecode: (crdt, json) => MapCrdtNode<String, ValueType>.fromJson(
+        json,
+        parent: crdt,
+        valueDecode: (v) => ValueType(v['value']),
+      ),
+    );
+    expect(
+      decodedCrdt.records,
+      {
+        'node1': Record<MapCrdtNode<String, ValueType>>(
+          clock: node1Clock,
+          value: MapCrdtNode<String, ValueType>(
+            decodedCrdt,
+            records: {
+              'key1': Record<ValueType>(
+                clock: key1Clock,
+                value: ValueType('value1'),
+              ),
+            },
+          ),
+        ),
+      },
+    );
   });
 }

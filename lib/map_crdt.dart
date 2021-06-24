@@ -162,6 +162,40 @@ class MapCrdtNode<K, V> extends _MapCrdtBase<K, V> {
   String toString() {
     return 'CrdtNode$records';
   }
+
+  Map<String, dynamic> toJson({
+    Function(K)? keyEncode,
+    Function(V)? valueEncode,
+  }) {
+    return _records.map((key, record) => MapEntry(
+          keyEncode != null ? keyEncode(key) : key as String,
+          record.toJson(valueEncode: valueEncode),
+        ));
+  }
+
+  factory MapCrdtNode.fromJson(
+    Map<String, dynamic> json, {
+    required MapCrdt<dynamic, MapCrdtNode<K, V>> parent,
+    K Function(dynamic)? keyDecode,
+    V Function(dynamic)? valueDecode,
+    bool validateRecords = true,
+  }) {
+    return MapCrdtNode(
+      parent,
+      records: _MapCrdtBase.recordsFromJson(
+        json,
+        keyDecode: keyDecode,
+        valueDecode: valueDecode,
+      ),
+      validateRecord: validateRecords,
+    );
+  }
+
+  @override
+  bool operator ==(Object other) => other is MapCrdtNode<K, V>
+      ? other._parent == _parent &&
+          MapEquality().equals(other._records, _records)
+      : false;
 }
 
 class MapCrdt<K, V> extends _MapCrdtBase<K, V> {
@@ -294,22 +328,40 @@ class MapCrdt<K, V> extends _MapCrdtBase<K, V> {
     };
   }
 
+  /// Create from [json].
+  ///
+  /// If [lateValueDecode] is set, [valueDecode] is ignored and records will be added after the (empty) the MapCrdt object is created.
+  /// This can be used to add values that require a reference to the parent MapCrdt (e.g. MapCrdtNode).
   factory MapCrdt.fromJson(
     Map<String, dynamic> json, {
     K Function(dynamic)? keyDecode,
     V Function(dynamic)? valueDecode,
+    V Function(MapCrdt<K, V>, dynamic)? lateValueDecode,
   }) {
-    return MapCrdt(
+    final crdt = MapCrdt(
       json['node'] as String,
       nodes: (json['nodes'] as List).map((e) => e as String).toSet(),
       vectorClock: VectorClock.fromList(
         (json['vectorClock'] as List).map((e) => e as int).toList(),
       ),
-      records: _MapCrdtBase.recordsFromJson(
+      records: lateValueDecode == null
+          ? _MapCrdtBase.recordsFromJson(
+              json['records'],
+              keyDecode: keyDecode,
+              valueDecode: valueDecode,
+            )
+          : null,
+    );
+    if (lateValueDecode != null) {
+      _MapCrdtBase.recordsFromJson(
         json['records'],
         keyDecode: keyDecode,
-        valueDecode: valueDecode,
-      ),
-    );
+        valueDecode: (v) => lateValueDecode(crdt, v),
+      ).forEach(
+        (key, value) => crdt.putRecord(key, value, validateRecord: false),
+      );
+    }
+
+    return crdt;
   }
 }
