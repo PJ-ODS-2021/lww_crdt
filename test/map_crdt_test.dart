@@ -1,23 +1,6 @@
 import 'package:test/test.dart';
 import 'package:lww_crdt/lww_crdt.dart';
-
-class ValueType {
-  String value;
-
-  ValueType(this.value);
-
-  @override
-  int get hashCode => value.hashCode;
-
-  @override
-  bool operator ==(Object other) =>
-      other is ValueType ? other.value == value : false;
-
-  @override
-  String toString() {
-    return 'ValueType("$value")';
-  }
-}
+import 'util/value_type.dart';
 
 void main() {
   test('init with records', () {
