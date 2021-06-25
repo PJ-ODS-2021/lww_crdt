@@ -109,6 +109,14 @@ void main() {
     expect(crdt1.map, {'key2': 'value2'});
   });
 
+  test('put all', () {
+    final crdt = MapCrdtRoot<String, String>('node1');
+    crdt.putAll({'key1': 'value1', 'key2': 'value2'});
+    expect(crdt.map, {'key1': 'value1', 'key2': 'value2'});
+    expect(crdt.getRecord('key1')!.clock, crdt.getRecord('key2')!.clock);
+    expect(crdt.vectorClock, VectorClock.fromList([1]));
+  });
+
   test('clone', () {
     final crdt1 = MapCrdtRoot<String, String>('node1');
     crdt1.put('key', 'value1');

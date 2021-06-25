@@ -12,6 +12,20 @@ MapCrdtRoot<String, MapCrdtNode<String, String>> _deepCloneCrdt(
 }
 
 void main() {
+  test('put all', () {
+    final crdt = MapCrdtRoot<String, MapCrdtNode<String, String>>('node1');
+    final crdtNode = MapCrdtNode<String, String>(crdt);
+    crdt.put('node', crdtNode);
+    crdtNode.putAll({'key1': 'value1', 'key2': 'value2'});
+
+    expect(crdtNode.map, {'key1': 'value1', 'key2': 'value2'});
+    expect(
+      crdtNode.getRecord('key1')!.clock,
+      crdtNode.getRecord('key2')!.clock,
+    );
+    expect(crdt.vectorClock, VectorClock.fromList([2]));
+  });
+
   test('map crdt deep clone', () {
     final crdt = MapCrdtRoot<String, MapCrdtNode<String, String>>('node');
     final crdtNode = MapCrdtNode<String, String>(crdt)..put('key', 'value');
