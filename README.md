@@ -3,6 +3,11 @@
 Dart implementation of a simple last-write-wins CRDT based on vector clocks, timestamps and node ids.
 Heavily influenced by <https://github.com/cachapa/crdt>.
 
+## About
+
+This library provides a simple last-write-wins CRDT map implementation.
+Because it uses vector clocks, it is only useful in applications with a limited number of nodes.
+
 ## Implementation Details
 
 The MapCrdt class provides an interface to store key-value pairs.
