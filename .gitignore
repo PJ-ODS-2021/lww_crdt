@@ -6,3 +6,4 @@ pubspec.lock
 
 # Conventional directory for build output.
 build/
+coverage/
