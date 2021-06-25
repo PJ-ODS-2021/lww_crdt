@@ -22,4 +22,4 @@ A MapCrdt can be merged with another and values that are registered with the sam
 Additionally, the vector clock of the merge result is updated so that it contains the most recently known vector clock.
 If merging with a previously unknown node, all vector clocks (local and record entries) get updated to contain the new node.
 
-Test `test` folder contains many tests that can be used as an example of how to use this library.
+The `test` folder contains many tests that can be used as an example of how to use this library.
