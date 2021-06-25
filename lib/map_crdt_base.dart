@@ -88,7 +88,13 @@ abstract class _MapCrdtBase<K, V> implements MapCrdt<K, V> {
   /// Merge records with other records and updates [vectorClock].
   /// Assumes all records have been updated to contain nodes [this] and [other].
   /// Important: Records of [other] will be changed. Use MapCrdt.from(other, cloneKey: ..., cloneValue: ...) to keep them intact.
-  void _mergeRecords(MapCrdt<K, V> other, VectorClock vectorClock) {
+  void _mergeRecords(
+    MapCrdt<K, V> other,
+    VectorClock vectorClock,
+    MapCrdtRoot root,
+  ) {
+    print('own records: $records');
+    print('other records: ${other.records}');
     final updatedRecords = other.records
       ..removeWhere((key, record) {
         vectorClock.merge(record.clock.vectorClock);
@@ -99,14 +105,43 @@ abstract class _MapCrdtBase<K, V> implements MapCrdt<K, V> {
         final localValue = localRecord.value;
         if (localValue is MapCrdt &&
             value.runtimeType == localValue.runtimeType) {
+          print('merging $key: $localValue with $value');
           localValue.merge(value as MapCrdt);
 
           return true;
+        } else if (localValue == null && value is MapCrdt) {
+          return _forEveryRecordRecursive(
+            value!,
+            (record) => localRecord.clock >= record.clock,
+          );
         } else {
           return localRecord.clock >= record.clock;
         }
-      });
+      })
+      ..map((key, value) =>
+          MapEntry(key, _updateNodeParentIfNecessary(value, root)));
+    print('updated records: $updatedRecords');
     _records.addAll(updatedRecords);
+  }
+
+  Record<V> _updateNodeParentIfNecessary(Record<V> record, MapCrdtRoot root) {
+    if (record.isDeleted) return record;
+    final value = record.value;
+    if (value is MapCrdtNode) value._root = root;
+
+    return record;
+  }
+
+  bool _forEveryRecordRecursive(MapCrdt crdt, bool Function(Record) test) {
+    return crdt.records.values.every((record) {
+      if (!test(record)) return false;
+      final value = record.value;
+      if (value is _MapCrdtBase) {
+        if (!value._forEveryRecordRecursive(value, test)) return false;
+      }
+
+      return true;
+    });
   }
 
   @override

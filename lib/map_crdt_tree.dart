@@ -95,7 +95,7 @@ class MapCrdtRoot<K, V> extends _MapCrdtBase<K, V> {
   @override
   void merge(MapCrdt<K, V> other) {
     mergeNodes(other);
-    _mergeRecords(other, _vectorClock);
+    _mergeRecords(other, _vectorClock, this);
     _vectorClock.increment(_nodeClockIndex);
   }
 
@@ -181,14 +181,14 @@ class MapCrdtRoot<K, V> extends _MapCrdtBase<K, V> {
 }
 
 class MapCrdtNode<K, V> extends _MapCrdtBase<K, V> {
-  final MapCrdtRoot<dynamic, MapCrdtNode<K, V>> _parent;
+  MapCrdtRoot _root;
 
   MapCrdtNode(
-    this._parent, {
+    this._root, {
     Map<K, Record<V>>? records,
     bool validateRecord = true,
   }) : super(records ?? {}) {
-    if (validateRecord) _parent._validateRecords(_records);
+    if (validateRecord) _root._validateRecords(_records);
   }
 
   /// Warning: Doesn't clone the parent. Specify [parent] to use a new parent.
@@ -197,48 +197,48 @@ class MapCrdtNode<K, V> extends _MapCrdtBase<K, V> {
     MapCrdtRoot<dynamic, MapCrdtNode<K, V>>? parent,
     K Function(K)? cloneKey,
     V Function(V)? cloneValue,
-  })  : _parent = parent ?? other._parent,
+  })  : _root = parent ?? other._root,
         super.from(other, cloneKey: cloneKey, cloneValue: cloneValue);
 
-  MapCrdtRoot<dynamic, MapCrdtNode<K, V>> get parent => _parent;
+  MapCrdtRoot get root => _root;
 
   @override
-  List<String> get nodes => _parent.nodes;
+  List<String> get nodes => _root.nodes;
 
   @override
-  bool containsNode(String node) => _parent.containsNode(node);
+  bool containsNode(String node) => _root.containsNode(node);
 
   @override
-  String get node => _parent.node;
+  String get node => _root.node;
 
   @override
-  VectorClock get vectorClock => _parent.vectorClock;
+  VectorClock get vectorClock => _root.vectorClock;
 
   @override
   void merge(MapCrdt<K, V> other, {bool mergeParentNodes = true}) {
-    if (mergeParentNodes) _parent.mergeNodes(other);
-    _mergeRecords(other, _parent.vectorClock);
+    if (mergeParentNodes) _root.mergeNodes(other);
+    _mergeRecords(other, _root.vectorClock, root);
   }
 
   @override
   void putRecord(K key, Record<V> record, {bool validateRecord = true}) {
-    if (validateRecord) _parent._validateRecord(record);
+    if (validateRecord) _root._validateRecord(record);
     _records[key] = record;
   }
 
   @override
   void put(K key, V? value) {
-    putRecord(key, _parent._makeRecord(value));
+    putRecord(key, _root._makeRecord(value));
   }
 
   @override
   void delete(K key) => put(key, null);
 
   @override
-  void addNode(String node) => _parent.addNode(node);
+  void addNode(String node) => _root.addNode(node);
 
   @override
-  void mergeNodes(MapCrdt other) => _parent.mergeNodes(other);
+  void mergeNodes(MapCrdt other) => _root.mergeNodes(other);
 
   @override
   String toString() {
@@ -271,7 +271,6 @@ class MapCrdtNode<K, V> extends _MapCrdtBase<K, V> {
 
   @override
   bool operator ==(Object other) => other is MapCrdtNode<K, V>
-      ? other._parent == _parent &&
-          MapEquality().equals(other._records, _records)
+      ? other._root == _root && MapEquality().equals(other._records, _records)
       : false;
 }

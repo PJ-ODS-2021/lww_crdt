@@ -27,7 +27,7 @@ void main() {
     expect(crdtCopy.get('node')?.map, {'key': 'value', 'key3': 'value3'});
     crdtCopy.addNode('node2');
     expect(crdtCopy.nodes, ['node', 'node2']);
-    crdtCopy.get('node')!.parent.addNode('node3');
+    crdtCopy.get('node')!.root.addNode('node3');
     expect(crdtCopy.nodes, ['node', 'node2', 'node3']);
 
     // expect original unchanged
@@ -54,6 +54,23 @@ void main() {
     expect(crdt1Node.map, {'key1': 'value1', 'key2': 'value2'});
   });
 
+  test('map crdt merge node parent updated', () {
+    final crdt1 = MapCrdtRoot<String, MapCrdtNode<String, String>>('node1');
+    final crdt2 = MapCrdtRoot<String, MapCrdtNode<String, String>>('node2');
+    final crdt2Node = MapCrdtNode<String, String>(crdt2);
+    crdt2.put('node', crdt2Node);
+    crdt2Node.put('key2', 'value2');
+
+    crdt1.merge(_deepCloneCrdt(crdt2));
+    expect(crdt1.map['node']?.map, {'key2': 'value2'});
+    expect(
+      crdt1.records.values.every((record) =>
+          record.isDeleted || (record.value as MapCrdtNode).root == crdt1),
+      true,
+      reason: 'expected crdt nodes to have updated their parent',
+    );
+  });
+
   test('map crdt node merge delete node', () {
     final crdt1 = MapCrdtRoot<String, MapCrdtNode<String, String>>('node1');
     final crdt1Node = MapCrdtNode<String, String>(crdt1);
@@ -70,6 +87,85 @@ void main() {
     crdt1.merge(_deepCloneCrdt(crdt2));
     expect(crdt1.map, {});
   });
+
+  test('map crdt node merge node first updated then deleted', () async {
+    final crdt1 = MapCrdtRoot<String, MapCrdtNode<String, String>>('node1');
+    final crdt1Node = MapCrdtNode<String, String>(crdt1);
+    final crdt2 = MapCrdtRoot<String, MapCrdtNode<String, String>>('node2');
+    final crdt2Node = MapCrdtNode<String, String>(crdt2);
+    crdt1.put('node', crdt1Node);
+    crdt2.put('node', crdt2Node);
+
+    // first update in crdt2 then delete in crdt1
+    crdt2Node.put('key2', 'new value');
+    await Future.delayed(Duration(milliseconds: 10));
+    crdt1.delete('node');
+
+    crdt1.merge(_deepCloneCrdt(crdt2));
+    expect(crdt1.map, {});
+  });
+
+  test(
+    'map crdt node merge node first updated then deleted after merge',
+    () async {
+      final crdt1 = MapCrdtRoot<String, MapCrdtNode<String, String>>('node1');
+      final crdt1Node = MapCrdtNode<String, String>(crdt1);
+      final crdt2 = MapCrdtRoot<String, MapCrdtNode<String, String>>('node2');
+      final crdt2Node = MapCrdtNode<String, String>(crdt2);
+      crdt1.put('node', crdt1Node);
+      crdt2.put('node', crdt2Node);
+      crdt1.merge(_deepCloneCrdt(crdt2));
+
+      // first update in crdt2 then delete in crdt1
+      crdt2Node.put('key2', 'new value');
+      await Future.delayed(Duration(milliseconds: 10));
+      crdt1.delete('node');
+
+      crdt1.merge(_deepCloneCrdt(crdt2));
+      expect(crdt1.map, {});
+    },
+  );
+
+  test('map crdt node merge node first deleted then updated', () async {
+    final crdt1 = MapCrdtRoot<String, MapCrdtNode<String, String>>('node1');
+    final crdt1Node = MapCrdtNode<String, String>(crdt1);
+    final crdt2 = MapCrdtRoot<String, MapCrdtNode<String, String>>('node2');
+    final crdt2Node = MapCrdtNode<String, String>(crdt2);
+    crdt1.put('node', crdt1Node);
+    crdt2.put('node', crdt2Node);
+
+    // first delete in crdt1 then update in crdt2
+    crdt1.delete('node');
+    await Future.delayed(Duration(milliseconds: 10));
+    crdt2Node.put('key', 'value');
+
+    crdt1.merge(_deepCloneCrdt(crdt2));
+    expect(crdt1.map.keys.toSet(), {'node'});
+    expect(crdt1.map['node']?.map, {'key': 'value'});
+  });
+
+  test(
+    'map crdt node merge node first deleted then updated after merge',
+    () async {
+      final crdt1 = MapCrdtRoot<String, MapCrdtNode<String, String>>('node1');
+      final crdt1Node = MapCrdtNode<String, String>(crdt1);
+      final crdt2 = MapCrdtRoot<String, MapCrdtNode<String, String>>('node2');
+      final crdt2Node = MapCrdtNode<String, String>(crdt2);
+      crdt1.put('node', crdt1Node);
+      crdt2.put('node', crdt2Node);
+      crdt1.merge(_deepCloneCrdt(crdt2));
+
+      // first delete in crdt1 then update in crdt2
+      crdt1.delete('node');
+      await Future.delayed(Duration(milliseconds: 10));
+      crdt2Node.put('key', 'value');
+
+      print('== merging again');
+      crdt1.merge(_deepCloneCrdt(crdt2));
+      expect(crdt1.map.keys.toSet(), {'node'});
+      expect(crdt1.map['node']?.map, {'key': 'value'});
+    },
+  );
 
   test('map crdt node merge delete in node', () {
     final crdt1 = MapCrdtRoot<String, MapCrdtNode<String, String>>('node1');
