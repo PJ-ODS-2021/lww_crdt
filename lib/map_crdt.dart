@@ -50,6 +50,9 @@ abstract class MapCrdt<K, V> {
   /// If [value] is null, the record for [key] will be marked as deleted.
   void put(K key, V? value);
 
+  /// Put all entries with the same clock value
+  void putAll(Map<K, V?> values);
+
   // Mark the entry for [key] as deleted.
   void delete(K key);
 
