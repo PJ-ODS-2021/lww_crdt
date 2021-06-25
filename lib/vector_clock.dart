@@ -15,14 +15,14 @@ class VectorClock {
 
   void increment(int index) {
     if (index < 0 || index >= _value.length) {
-      throw RangeError.range(index, 0, _value.length);
+      throw RangeError.range(index, 0, _value.length - 1);
     }
     _value[index]++;
   }
 
   void insertClockValue(int index, [int value = 0]) {
     if (index < 0 || index > _value.length) {
-      throw RangeError.range(index, 0, _value.length + 1);
+      throw RangeError.range(index, 0, _value.length);
     }
     _value.insert(index, value);
   }

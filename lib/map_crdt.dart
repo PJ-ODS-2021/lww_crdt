@@ -1,177 +1,86 @@
-import 'dart:collection';
-
-import 'package:collection/collection.dart';
-
 import 'vector_clock.dart';
 import 'record.dart';
-import 'distributed_clock.dart';
 
-class MapCrdt<K, V> {
-  final String _node;
-  final List<String> _nodes;
-  final VectorClock _vectorClock;
-  final Map<K, Record<V>> _records;
-  late int _nodeClockIndex;
+abstract class MapCrdt<K, V> {
+  /// Get all recods
+  Map<K, Record<V>> get records;
 
-  MapCrdt(
-    this._node, {
-    Set<String>? nodes,
-    VectorClock? vectorClock,
-    Map<K, Record<V>>? records,
-    bool validateRecords = true,
-  })  : _nodes = nodes != null ? List.from(nodes) : [_node],
-        _vectorClock =
-            vectorClock ?? VectorClock(nodes == null ? 1 : nodes.length),
-        _records = records ?? {} {
-    if (_vectorClock.numNodes != _nodes.length) {
-      throw ArgumentError('vector clock has invalid number of nodes');
-    }
-    _nodes.sort();
-    _updateNodeClockIndex();
+  /// Get all not deleted entries
+  Map<K, V> get map;
 
-    if (validateRecords) {
-      _records.forEach((key, value) {
-        if (!hasNode(value.clock.node)) {
-          throw ArgumentError(
-            'node list doesn\'t contain the node of record',
-          );
-        }
-        if (value.clock.vectorClock.numNodes != _vectorClock.numNodes) {
-          throw ArgumentError(
-            'record vector clock has different number of nodes',
-          );
-        }
-      });
-    }
-  }
+  /// Get all not deleted values
+  Iterable<V> get values;
 
-  MapCrdt.from(
-    MapCrdt<K, V> other, {
-    K Function(K)? cloneKey,
-    V Function(V)? cloneValue,
-  })  : _node = other._node,
-        _nodes = List.from(other._nodes),
-        _vectorClock = VectorClock.from(other._vectorClock),
-        _records = Map.from(other._records).map((key, value) => MapEntry(
-              cloneKey != null ? cloneKey(key) : key,
-              Record<V>.from(value, cloneValue: cloneValue),
-            )),
-        _nodeClockIndex = other._nodeClockIndex;
+  /// Get the record for [key]
+  Record<V>? getRecord(K key);
 
-  String get node => _node;
-  VectorClock get vectorClock => _vectorClock;
-  UnmodifiableListView<String> get nodes => UnmodifiableListView(_nodes);
-  Map<K, Record<V>> get records => _records;
+  /// Get the entry for [key]
+  V? get(K key);
 
-  Map<K, V> get map => (Map<K, Record<V>>.from(_records)
-        ..removeWhere((key, value) => value.isDeleted))
-      .map((key, value) => MapEntry(key, value.value!));
+  /// Get the list of nodes that this crdt knows
+  List<String> get nodes;
 
-  Iterable<V> get values => (List<Record<V>>.from(_records.values)
-        ..removeWhere((record) => record.isDeleted))
-      .map((record) => record.value!);
+  /// True if this crdt knows of node [node]
+  bool containsNode(String node);
 
-  bool hasNode(String node) {
-    return binarySearch(_nodes, node) != -1;
-  }
+  /// The name of this node
+  String get node;
 
-  void putRecord(K key, Record<V> record) {
-    if (record.clock.vectorClock.numNodes != _vectorClock.numNodes) {
-      throw ArgumentError(
-        'record vector clock does not have the same number of nodes as this crdt',
-      );
-    }
-    _records[key] = record;
-  }
+  /// The current vector clock of this node
+  VectorClock get vectorClock;
 
-  void put(K key, V? value) {
-    putRecord(key, _makeRecord(value));
-  }
+  /// Update all records using the [updateRecord] function
+  ///
+  /// This function can be used to deep clone MapCrdt with MapCrdtNode values.
+  void updateRecords(Record<V> Function(K, Record<V>) updateRecord);
 
-  void delete(K key) => put(key, null);
-  Record<V>? getRecord(K key) => _records[key];
-  V? get(K key) => getRecord(key)?.value;
+  /// Update a single record if it exists
+  void updateRecord(K key, Record<V> Function(Record<V>) updateRecord);
 
-  void addNode(String node) {
-    final insertPos = lowerBound(_nodes, node);
-    if (insertPos < _nodes.length && _nodes[insertPos] == node) return;
-    _nodes.insert(insertPos, node);
-    _vectorClock.insertClockValue(insertPos);
-    _records.values.forEach((record) {
-      record.clock.vectorClock.insertClockValue(insertPos);
-    });
-    _updateNodeClockIndex();
-  }
+  /// Update all values that are not deleted
+  void updateValues(V Function(K, V) updateValue);
 
-  /// Important: the other crdt will get changed. Use MapCrdt.from(other, cloneKey: ..., cloneValue: ...) to keep it intact.
-  void merge(MapCrdt<K, V> other) {
-    other.nodes.forEach((node) => addNode(node));
-    nodes.forEach((node) => other.addNode(node));
+  /// Update a single value if it exists and is not deleted
+  void updateValue(K key, V Function(V) updateRecord);
 
-    final updatedRecords = other._records
-      ..removeWhere((key, value) {
-        _vectorClock.merge(value.clock.vectorClock);
-        final localRecord = _records[key];
+  /// Add or replace a record
+  void putRecord(K key, Record<V> record, {bool validateRecord = true});
 
-        return localRecord != null && localRecord.clock >= value.clock;
-      });
-    _records.addAll(updatedRecords);
+  /// Add or replace an entry for [key].
+  /// If [value] is null, the record for [key] will be marked as deleted.
+  void put(K key, V? value);
 
-    _vectorClock.increment(_nodeClockIndex);
-  }
+  // Mark the entry for [key] as deleted.
+  void delete(K key);
 
-  Record<V> _makeRecord(V? value) {
-    return Record(
-      clock: _makeDistributedClock(),
-      value: value,
-    );
-  }
+  /// Add a node to the list of known nodes
+  ///
+  /// The node is added to the current internal vector clock and all vector clocks of existing records
+  void addNode(String node);
 
-  DistributedClock _makeDistributedClock() => DistributedClock.now(
-        _vectorClock..increment(_nodeClockIndex),
-        _node,
-      );
+  /// Add all nodes from [other] to [this] and all nodes of [this] to [other]
+  void mergeNodes(MapCrdt other);
 
-  void _updateNodeClockIndex() {
-    _nodeClockIndex = binarySearch(_nodes, _node);
-    if (!hasNode(node)) {
-      throw ArgumentError('could not find own node in list of nodes');
-    }
-  }
+  /// Merge all records of [other] into [this]
+  ///
+  /// Important: Records and nodes of [other] will be changed.
+  /// Use the from(other, cloneKey: ..., cloneValue: ...) constructor to clone it before using this function if [other] is used after.
+  void merge(MapCrdt<K, V> other);
 
-  Map<String, dynamic> toJson({
-    Function(K)? keyEncode,
-    Function(V)? valueEncode,
-  }) {
-    return <String, dynamic>{
-      'node': _node,
-      'nodes': _nodes,
-      'vectorClock': List<int>.from(_vectorClock.value),
-      'records': _records.map((key, value) => MapEntry(
-            keyEncode != null ? keyEncode(key) : key,
-            value.toJson(valueEncode: valueEncode),
-          )),
-    };
-  }
+  /// Insert a node into the internal vector clock.
+  /// THIS METHOD IS ONLY INTENDED FOR INTERNAL USAGE.
+  ///
+  /// Using this method can irreversibly destroy the structure of internal vector clocks.
+  ///
+  /// Internal method used to recursively update the vector clock when new nodes are added and the correct insertion index is already known.
+  void insertClockValue(int pos, [int initialClockValue = 0]);
 
-  factory MapCrdt.fromJson(
-    Map<String, dynamic> json, {
-    K Function(dynamic)? keyDecode,
-    V Function(dynamic)? valueDecode,
-  }) {
-    return MapCrdt(
-      json['node'] as String,
-      nodes: (json['nodes'] as List).map((e) => e as String).toSet(),
-      vectorClock: VectorClock.fromList(
-        (json['vectorClock'] as List).map((e) => e as int).toList(),
-      ),
-      records: (json['records'] as Map).map((key, value) => MapEntry(
-            keyDecode != null ? keyDecode(key) : key as K,
-            Record<V>.fromJson(
-              value as Map<String, dynamic>,
-              valueDecode: valueDecode,
-            ),
-          )),
-    );
-  }
+  /// Encode all records to a JSON map
+  ///
+  /// Use [keyEncode] to specify custom key encoding.
+  /// Use [valueEncode] to specify custom value encoding.
+  Map<String, dynamic> recordsToJson({
+    String Function(K)? keyEncode,
+    dynamic Function(V)? valueEncode,
+  });
 }

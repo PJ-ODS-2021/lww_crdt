@@ -45,4 +45,9 @@ class Record<T> {
   @override
   bool operator ==(Object other) =>
       other is Record<T> ? other.clock == clock && other.value == value : false;
+
+  @override
+  String toString() {
+    return '$value@$clock';
+  }
 }
