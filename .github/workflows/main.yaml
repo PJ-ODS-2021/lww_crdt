@@ -25,6 +25,8 @@ jobs:
         run: dart pub run dart_code_metrics:metrics --reporter=github lib
       - name: Run tests and generate coverage data
         run: dart test --coverage coverage
+      - name: Convert coverage data
+        run: dart run coverage:format_coverage -i coverage/test/ -l -o coverage/coverage.lcov
       - name: Upload code coverage data
         uses: codecov/codecov-action@v1
         with:
