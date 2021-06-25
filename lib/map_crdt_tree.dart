@@ -70,7 +70,15 @@ class MapCrdtRoot<K, V> extends _MapCrdtBase<K, V> {
 
   @override
   void put(K key, V? value) {
-    putRecord(key, _makeRecord(value));
+    putRecord(key, _makeRecord(value), validateRecord: false);
+  }
+
+  @override
+  void putAll(Map<K, V?> values) {
+    final clock = _makeDistributedClock();
+    values.forEach((key, value) {
+      _records[key] = Record(clock: clock, value: value);
+    });
   }
 
   @override
@@ -228,7 +236,15 @@ class MapCrdtNode<K, V> extends _MapCrdtBase<K, V> {
 
   @override
   void put(K key, V? value) {
-    putRecord(key, _root._makeRecord(value));
+    putRecord(key, _root._makeRecord(value), validateRecord: false);
+  }
+
+  @override
+  void putAll(Map<K, V?> values) {
+    final clock = _root._makeDistributedClock();
+    values.forEach((key, value) {
+      _records[key] = Record(clock: clock, value: value);
+    });
   }
 
   @override
