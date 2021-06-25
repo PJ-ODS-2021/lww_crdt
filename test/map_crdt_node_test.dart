@@ -2,10 +2,10 @@ import 'package:test/test.dart';
 import 'package:lww_crdt/lww_crdt.dart';
 import 'util/value_type.dart';
 
-MapCrdt<String, MapCrdtNode<String, String>> _deepCloneCrdt(
-  MapCrdt<String, MapCrdtNode<String, String>> crdt,
+MapCrdtRoot<String, MapCrdtNode<String, String>> _deepCloneCrdt(
+  MapCrdtRoot<String, MapCrdtNode<String, String>> crdt,
 ) {
-  final crdtCopy = MapCrdt<String, MapCrdtNode<String, String>>.from(crdt);
+  final crdtCopy = MapCrdtRoot<String, MapCrdtNode<String, String>>.from(crdt);
   crdtCopy.updateValues((k, v) => MapCrdtNode.from(v, parent: crdtCopy));
 
   return crdtCopy;
@@ -13,7 +13,7 @@ MapCrdt<String, MapCrdtNode<String, String>> _deepCloneCrdt(
 
 void main() {
   test('map crdt deep clone', () {
-    final crdt = MapCrdt<String, MapCrdtNode<String, String>>('node');
+    final crdt = MapCrdtRoot<String, MapCrdtNode<String, String>>('node');
     final crdtNode = MapCrdtNode<String, String>(crdt)..put('key', 'value');
     crdt.put('node', crdtNode);
 
@@ -38,9 +38,9 @@ void main() {
   });
 
   test('map crdt node merge', () {
-    final crdt1 = MapCrdt<String, MapCrdtNode<String, String>>('node1');
+    final crdt1 = MapCrdtRoot<String, MapCrdtNode<String, String>>('node1');
     final crdt1Node = MapCrdtNode<String, String>(crdt1);
-    final crdt2 = MapCrdt<String, MapCrdtNode<String, String>>('node2');
+    final crdt2 = MapCrdtRoot<String, MapCrdtNode<String, String>>('node2');
     final crdt2Node = MapCrdtNode<String, String>(crdt2);
     crdt1.put('node', crdt1Node);
     crdt2.put('node', crdt2Node);
@@ -55,9 +55,9 @@ void main() {
   });
 
   test('map crdt node merge delete node', () {
-    final crdt1 = MapCrdt<String, MapCrdtNode<String, String>>('node1');
+    final crdt1 = MapCrdtRoot<String, MapCrdtNode<String, String>>('node1');
     final crdt1Node = MapCrdtNode<String, String>(crdt1);
-    final crdt2 = MapCrdt<String, MapCrdtNode<String, String>>('node2');
+    final crdt2 = MapCrdtRoot<String, MapCrdtNode<String, String>>('node2');
     final crdt2Node = MapCrdtNode<String, String>(crdt2);
     crdt1.put('node', crdt1Node);
     crdt2.put('node', crdt2Node);
@@ -72,9 +72,9 @@ void main() {
   });
 
   test('map crdt node merge delete in node', () {
-    final crdt1 = MapCrdt<String, MapCrdtNode<String, String>>('node1');
+    final crdt1 = MapCrdtRoot<String, MapCrdtNode<String, String>>('node1');
     final crdt1Node = MapCrdtNode<String, String>(crdt1);
-    final crdt2 = MapCrdt<String, MapCrdtNode<String, String>>('node2');
+    final crdt2 = MapCrdtRoot<String, MapCrdtNode<String, String>>('node2');
     final crdt2Node = MapCrdtNode<String, String>(crdt2);
     crdt1.put('node', crdt1Node);
     crdt2.put('node', crdt2Node);
@@ -89,7 +89,7 @@ void main() {
   });
 
   test('map crdt node to json', () {
-    final crdt = MapCrdt<String, MapCrdtNode<String, String>>('node1');
+    final crdt = MapCrdtRoot<String, MapCrdtNode<String, String>>('node1');
     final crdtNode = MapCrdtNode<String, String>(crdt);
     crdt.put('node1', crdtNode);
     crdtNode.put('key1', 'value1');
@@ -118,7 +118,7 @@ void main() {
   });
 
   test('map crdt node to json custom value type', () {
-    final crdt = MapCrdt<String, MapCrdtNode<String, ValueType>>('node1');
+    final crdt = MapCrdtRoot<String, MapCrdtNode<String, ValueType>>('node1');
     final crdtNode = MapCrdtNode<String, ValueType>(crdt);
     crdt.put('node1', crdtNode);
     crdtNode.put('key1', ValueType('value1'));
@@ -177,7 +177,7 @@ void main() {
     expect(
       MapCrdtNode<String, String>.fromJson(
         crdtNodeJson,
-        parent: MapCrdt<String, MapCrdtNode<String, String>>('node1'),
+        parent: MapCrdtRoot<String, MapCrdtNode<String, String>>('node1'),
       ).records,
       {
         'key1': Record<String>(
@@ -198,7 +198,8 @@ void main() {
         },
       },
     };
-    final decodedCrdt = MapCrdt<String, MapCrdtNode<String, String>>.fromJson(
+    final decodedCrdt =
+        MapCrdtRoot<String, MapCrdtNode<String, String>>.fromJson(
       crdtJson,
       lateValueDecode: (crdt, json) => MapCrdtNode<String, String>.fromJson(
         json,
@@ -245,7 +246,7 @@ void main() {
     expect(
       MapCrdtNode<String, ValueType>.fromJson(
         crdtNodeJson,
-        parent: MapCrdt<String, MapCrdtNode<String, ValueType>>('node1'),
+        parent: MapCrdtRoot<String, MapCrdtNode<String, ValueType>>('node1'),
         valueDecode: (v) => ValueType(v['value'] as String),
       ).records,
       {
@@ -268,7 +269,7 @@ void main() {
       },
     };
     final decodedCrdt =
-        MapCrdt<String, MapCrdtNode<String, ValueType>>.fromJson(
+        MapCrdtRoot<String, MapCrdtNode<String, ValueType>>.fromJson(
       crdtJson,
       lateValueDecode: (crdt, json) => MapCrdtNode<String, ValueType>.fromJson(
         json,

@@ -6,7 +6,83 @@ import 'vector_clock.dart';
 import 'record.dart';
 import 'distributed_clock.dart';
 
-class _MapCrdtBase<K, V> {
+abstract class MapCrdt<K, V> {
+  /// Get all recods
+  Map<K, Record<V>> get records;
+
+  /// Get all not deleted entries
+  Map<K, V> get map;
+
+  /// Get all not deleted values
+  Iterable<V> get values;
+
+  /// Get the record for [key]
+  Record<V>? getRecord(K key);
+
+  /// Get the entry for [key]
+  V? get(K key);
+
+  /// Get the list of nodes that this crdt knows
+  List<String> get nodes;
+
+  /// True if this crdt knows of node [node]
+  bool containsNode(String node);
+
+  /// The name of this node
+  String get node;
+
+  /// The current vector clock of this node
+  VectorClock get vectorClock;
+
+  /// Update all records using the [updateRecord] function
+  ///
+  /// This function can be used to deep clone MapCrdt with MapCrdtNode values.
+  void updateRecords(Record<V> Function(K, Record<V>) updateRecord);
+
+  /// Update a single record if it exists
+  void updateRecord(K key, Record<V> Function(Record<V>) updateRecord);
+
+  /// Update all values that are not deleted
+  void updateValues(V Function(K, V) updateValue);
+
+  /// Update a single value if it exists and is not deleted
+  void updateValue(K key, V Function(V) updateRecord);
+
+  /// Add or replace a record
+  void putRecord(K key, Record<V> record, {bool validateRecord = true});
+
+  /// Add or replace an entry for [key].
+  /// If [value] is null, the record for [key] will be marked as deleted.
+  void put(K key, V? value);
+
+  // Mark the entry for [key] as deleted.
+  void delete(K key);
+
+  /// Add a node to the list of known nodes
+  ///
+  /// The node is added to the current internal vector clock and all vector clocks of existing records
+  void addNode(String node);
+
+  /// Add all nodes from [other] to [this] and all nodes of [this] to [other]
+  void mergeNodes(MapCrdt other);
+
+  /// Merge all records of [other] into [this]
+  ///
+  /// Important: Records and nodes of [other] will be changed.
+  /// Use the from(other, cloneKey: ..., cloneValue: ...) constructor to clone it before using this function if [other] is used after.
+  void merge(MapCrdt<K, V> other);
+
+  /// Encode all records to a JSON map
+  ///
+  /// Use [keyEncode] to specify custom key encoding.
+  /// Use [valueEncode] to specify custom value encoding.
+  Map<String, dynamic> recordsToJson({
+    String Function(K)? keyEncode,
+    dynamic Function(V)? valueEncode,
+  });
+}
+
+abstract class _MapCrdtBase<K, V> implements MapCrdt<K, V> {
   final Map<K, Record<V>> _records;
 
   _MapCrdtBase(this._records);
@@ -20,39 +96,43 @@ class _MapCrdtBase<K, V> {
               Record<V>.from(value, cloneValue: cloneValue),
             ));
 
+  @override
   Map<K, Record<V>> get records => _records;
 
+  @override
   Map<K, V> get map => (Map<K, Record<V>>.from(_records)
         ..removeWhere((key, value) => value.isDeleted))
       .map((key, value) => MapEntry(key, value.value!));
 
+  @override
   Iterable<V> get values => (List<Record<V>>.from(_records.values)
         ..removeWhere((record) => record.isDeleted))
       .map((record) => record.value!);
 
+  @override
   Record<V>? getRecord(K key) => _records[key];
+
+  @override
   V? get(K key) => getRecord(key)?.value;
 
-  /// Update all records using the [updateRecord] function.
-  ///
-  /// This function can be used to deep clone MapCrdt with MapCrdtNode values.
+  @override
   void updateRecords(Record<V> Function(K, Record<V>) updateRecord) {
     _records.updateAll((key, record) => updateRecord(key, record));
   }
 
-  /// Update a single record if it exists.
+  @override
   void updateRecord(K key, Record<V> Function(Record<V>) updateRecord) {
     _records.update(key, updateRecord);
   }
 
-  /// Update all values to records that are note deleted using the [updateValue] function.
+  @override
   void updateValues(V Function(K, V) updateValue) {
     _records.updateAll((k, record) => record.isDeleted
         ? record
         : Record(clock: record.clock, value: updateValue(k, record.value!)));
   }
 
-  /// Update a single value if it exists and is not deleted.
+  @override
   void updateValue(K key, V Function(V) updateRecord) {
     _records.update(
       key,
@@ -62,11 +142,36 @@ class _MapCrdtBase<K, V> {
     );
   }
 
+  @override
+  Map<String, dynamic> recordsToJson({
+    String Function(K)? keyEncode,
+    dynamic Function(V)? valueEncode,
+  }) {
+    return _records.map((key, value) => MapEntry(
+          keyEncode != null ? keyEncode(key) : key as String,
+          value.toJson(valueEncode: valueEncode),
+        ));
+  }
+
+  static Map<K, Record<V>> recordsFromJson<K, V>(
+    Map json, {
+    K Function(dynamic)? keyDecode,
+    V Function(dynamic)? valueDecode,
+  }) {
+    return json.map((key, value) => MapEntry(
+          keyDecode != null ? keyDecode(key) : key as K,
+          Record<V>.fromJson(
+            value as Map<String, dynamic>,
+            valueDecode: valueDecode,
+          ),
+        ));
+  }
+
   /// Merge records with other records and updates [vectorClock].
   /// Assumes all records have been updated to contain nodes [this] and [other].
   /// Important: Records of [other] will be changed. Use MapCrdt.from(other, cloneKey: ..., cloneValue: ...) to keep them intact.
-  void _mergeRecords(_MapCrdtBase<K, V> other, VectorClock vectorClock) {
-    final updatedRecords = other._records
+  void _mergeRecords(MapCrdt<K, V> other, VectorClock vectorClock) {
+    final updatedRecords = other.records
       ..removeWhere((key, record) {
         vectorClock.merge(record.clock.vectorClock);
         final localRecord = _records[key];
@@ -93,34 +198,10 @@ class _MapCrdtBase<K, V> {
       if (value is MapCrdtNode) value._insertClockValue(pos, initialClockValue);
     });
   }
-
-  Map<String, dynamic> recordsToJson({
-    Function(K)? keyEncode,
-    Function(V)? valueEncode,
-  }) {
-    return _records.map((key, value) => MapEntry(
-          keyEncode != null ? keyEncode(key) : key,
-          value.toJson(valueEncode: valueEncode),
-        ));
-  }
-
-  static Map<K, Record<V>> recordsFromJson<K, V>(
-    Map json, {
-    K Function(dynamic)? keyDecode,
-    V Function(dynamic)? valueDecode,
-  }) {
-    return json.map((key, value) => MapEntry(
-          keyDecode != null ? keyDecode(key) : key as K,
-          Record<V>.fromJson(
-            value as Map<String, dynamic>,
-            valueDecode: valueDecode,
-          ),
-        ));
-  }
 }
 
 class MapCrdtNode<K, V> extends _MapCrdtBase<K, V> {
-  final MapCrdt<dynamic, MapCrdtNode<K, V>> _parent;
+  final MapCrdtRoot<dynamic, MapCrdtNode<K, V>> _parent;
 
   MapCrdtNode(
     this._parent, {
@@ -133,30 +214,51 @@ class MapCrdtNode<K, V> extends _MapCrdtBase<K, V> {
   /// Warning: Doesn't clone the parent. Specify [parent] to use a new parent.
   MapCrdtNode.from(
     MapCrdtNode<K, V> other, {
-    MapCrdt<dynamic, MapCrdtNode<K, V>>? parent,
+    MapCrdtRoot<dynamic, MapCrdtNode<K, V>>? parent,
     K Function(K)? cloneKey,
     V Function(V)? cloneValue,
   })  : _parent = parent ?? other._parent,
         super.from(other, cloneKey: cloneKey, cloneValue: cloneValue);
 
-  MapCrdt<dynamic, MapCrdtNode<K, V>> get parent => _parent;
+  MapCrdtRoot<dynamic, MapCrdtNode<K, V>> get parent => _parent;
 
-  /// Important: Records of [other] will be changed. Use MapCrdt.from(other, cloneKey: ..., cloneValue: ...) to keep them intact.
-  void merge(MapCrdtNode<K, V> other, {bool mergeParentNodes = true}) {
-    if (mergeParentNodes) _parent.mergeNodes(other._parent);
+  @override
+  List<String> get nodes => _parent.nodes;
+
+  @override
+  bool containsNode(String node) => _parent.containsNode(node);
+
+  @override
+  String get node => _parent.node;
+
+  @override
+  VectorClock get vectorClock => _parent.vectorClock;
+
+  @override
+  void merge(MapCrdt<K, V> other, {bool mergeParentNodes = true}) {
+    if (mergeParentNodes) _parent.mergeNodes(other);
     _mergeRecords(other, _parent.vectorClock);
   }
 
+  @override
   void putRecord(K key, Record<V> record, {bool validateRecord = true}) {
     if (validateRecord) _parent._validateRecord(record);
     _records[key] = record;
   }
 
+  @override
   void put(K key, V? value) {
     putRecord(key, _parent._makeRecord(value));
   }
 
+  @override
   void delete(K key) => put(key, null);
+
+  @override
+  void addNode(String node) => _parent.addNode(node);
+
+  @override
+  void mergeNodes(MapCrdt other) => _parent.mergeNodes(other);
 
   @override
   String toString() {
@@ -175,7 +277,7 @@ class MapCrdtNode<K, V> extends _MapCrdtBase<K, V> {
 
   factory MapCrdtNode.fromJson(
     Map<String, dynamic> json, {
-    required MapCrdt<dynamic, MapCrdtNode<K, V>> parent,
+    required MapCrdtRoot<dynamic, MapCrdtNode<K, V>> parent,
     K Function(dynamic)? keyDecode,
     V Function(dynamic)? valueDecode,
     bool validateRecords = true,
@@ -198,13 +300,13 @@ class MapCrdtNode<K, V> extends _MapCrdtBase<K, V> {
       : false;
 }
 
-class MapCrdt<K, V> extends _MapCrdtBase<K, V> {
+class MapCrdtRoot<K, V> extends _MapCrdtBase<K, V> {
   final String _node;
   final List<String> _nodes;
   final VectorClock _vectorClock;
   late int _nodeClockIndex;
 
-  MapCrdt(
+  MapCrdtRoot(
     this._node, {
     Set<String>? nodes,
     VectorClock? vectorClock,
@@ -229,8 +331,8 @@ class MapCrdt<K, V> extends _MapCrdtBase<K, V> {
   ///
   /// To clone deep clone values that require the parent CRDT (e.g. MapCrdtNode),
   /// don't provide [cloneValue] and call [updateValues] or [updateRecords] later.
-  MapCrdt.from(
-    MapCrdt<K, V> other, {
+  MapCrdtRoot.from(
+    MapCrdtRoot<K, V> other, {
     K Function(K)? cloneKey,
     V Function(V)? cloneValue,
   })  : _node = other._node,
@@ -239,26 +341,33 @@ class MapCrdt<K, V> extends _MapCrdtBase<K, V> {
         _nodeClockIndex = other._nodeClockIndex,
         super.from(other, cloneKey: cloneKey, cloneValue: cloneValue);
 
+  @override
+  List<String> get nodes => UnmodifiableListView(_nodes);
+
+  @override
+  bool containsNode(String node) => binarySearch(_nodes, node) != -1;
+
+  @override
   String get node => _node;
+
+  @override
   VectorClock get vectorClock => _vectorClock;
-  UnmodifiableListView<String> get nodes => UnmodifiableListView(_nodes);
 
-  bool hasNode(String node) {
-    return binarySearch(_nodes, node) != -1;
-  }
-
+  @override
   void putRecord(K key, Record<V> record, {bool validateRecord = true}) {
     if (validateRecord) _validateRecord(record);
     _records[key] = record;
   }
 
+  @override
   void put(K key, V? value) {
     putRecord(key, _makeRecord(value));
   }
 
+  @override
   void delete(K key) => put(key, null);
 
-  /// Add a node to the internal vector clock and all vector clocks of existing records.
+  @override
   void addNode(String node) {
     final insertPos = lowerBound(_nodes, node);
     if (insertPos < _nodes.length && _nodes[insertPos] == node) return;
@@ -268,13 +377,13 @@ class MapCrdt<K, V> extends _MapCrdtBase<K, V> {
     _updateNodeClockIndex();
   }
 
-  /// Add all nodes from [other] to [this] and all nodes of [this] to [other].
+  @override
   void mergeNodes(MapCrdt other) {
     other.nodes.forEach((node) => addNode(node));
     nodes.forEach((node) => other.addNode(node));
   }
 
-  /// Important: Records of [other] will be changed. Use MapCrdt.from(other, cloneKey: ..., cloneValue: ...) to keep them intact.
+  @override
   void merge(MapCrdt<K, V> other) {
     mergeNodes(other);
     _mergeRecords(other, _vectorClock);
@@ -282,7 +391,7 @@ class MapCrdt<K, V> extends _MapCrdtBase<K, V> {
   }
 
   void _validateRecord(Record record) {
-    if (!hasNode(record.clock.node)) {
+    if (!containsNode(record.clock.node)) {
       throw ArgumentError(
         'node list doesn\'t contain the node of the record',
       );
@@ -311,14 +420,14 @@ class MapCrdt<K, V> extends _MapCrdtBase<K, V> {
 
   void _updateNodeClockIndex() {
     _nodeClockIndex = binarySearch(_nodes, _node);
-    if (!hasNode(node)) {
+    if (!containsNode(node)) {
       throw ArgumentError('could not find own node in list of nodes');
     }
   }
 
   Map<String, dynamic> toJson({
-    Function(K)? keyEncode,
-    Function(V)? valueEncode,
+    String Function(K)? keyEncode,
+    dynamic Function(V)? valueEncode,
   }) {
     return <String, dynamic>{
       'node': _node,
@@ -332,13 +441,13 @@ class MapCrdt<K, V> extends _MapCrdtBase<K, V> {
   ///
   /// If [lateValueDecode] is set, [valueDecode] is ignored and records will be added after the (empty) the MapCrdt object is created.
   /// This can be used to add values that require a reference to the parent MapCrdt (e.g. MapCrdtNode).
-  factory MapCrdt.fromJson(
+  factory MapCrdtRoot.fromJson(
     Map<String, dynamic> json, {
     K Function(dynamic)? keyDecode,
     V Function(dynamic)? valueDecode,
-    V Function(MapCrdt<K, V>, dynamic)? lateValueDecode,
+    V Function(MapCrdtRoot<K, V>, dynamic)? lateValueDecode,
   }) {
-    final crdt = MapCrdt(
+    final crdt = MapCrdtRoot(
       json['node'] as String,
       nodes: (json['nodes'] as List).map((e) => e as String).toSet(),
       vectorClock: VectorClock.fromList(

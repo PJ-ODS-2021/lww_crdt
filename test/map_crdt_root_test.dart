@@ -4,7 +4,7 @@ import 'util/value_type.dart';
 
 void main() {
   test('init with records', () {
-    final crdt = MapCrdt<String, String>(
+    final crdt = MapCrdtRoot<String, String>(
       'node1',
       records: <String, Record<String>>{
         'key': Record<String>(
@@ -21,7 +21,7 @@ void main() {
 
   test('init with records fail validation invalid node', () {
     expect(
-      () => MapCrdt<String, String>(
+      () => MapCrdtRoot<String, String>(
         'node1',
         records: <String, Record<String>>{
           'key': Record<String>(
@@ -39,7 +39,7 @@ void main() {
 
   test('init with records fail validation invalid vector clock', () {
     expect(
-      () => MapCrdt<String, String>(
+      () => MapCrdtRoot<String, String>(
         'node1',
         records: <String, Record<String>>{
           'key': Record<String>(
@@ -56,14 +56,14 @@ void main() {
   });
 
   test('put & get', () {
-    final crdt = MapCrdt<String, String>('node1');
+    final crdt = MapCrdtRoot<String, String>('node1');
     crdt.put('key', 'value');
     expect(crdt.get('key'), 'value');
     expect(crdt.vectorClock, VectorClock.fromList([1]));
   });
 
   test('add node empty map', () {
-    final crdt = MapCrdt<String, String>('node1');
+    final crdt = MapCrdtRoot<String, String>('node1');
     expect(crdt.nodes, ['node1']);
     expect(crdt.vectorClock.numNodes, 1);
     crdt.addNode('node2');
@@ -72,7 +72,7 @@ void main() {
   });
 
   test('add node with record', () {
-    final crdt = MapCrdt<String, String>('node1');
+    final crdt = MapCrdtRoot<String, String>('node1');
     crdt.put('key', 'value');
     final record = crdt.getRecord('key');
     expect(record, isNot(null));
@@ -90,7 +90,7 @@ void main() {
   });
 
   test('add node existing', () {
-    final crdt = MapCrdt<String, String>('node1');
+    final crdt = MapCrdtRoot<String, String>('node1');
     expect(crdt.nodes, ['node1']);
     expect(crdt.vectorClock.numNodes, 1);
     crdt.addNode('node1');
@@ -99,7 +99,7 @@ void main() {
   });
 
   test('map', () {
-    final crdt1 = MapCrdt<String, String>('node1');
+    final crdt1 = MapCrdtRoot<String, String>('node1');
     expect(crdt1.map, {});
     crdt1.put('key1', 'value1');
     expect(crdt1.map, {'key1': 'value1'});
@@ -110,9 +110,9 @@ void main() {
   });
 
   test('clone', () {
-    final crdt1 = MapCrdt<String, String>('node1');
+    final crdt1 = MapCrdtRoot<String, String>('node1');
     crdt1.put('key', 'value1');
-    final crdt2 = MapCrdt.from(crdt1);
+    final crdt2 = MapCrdtRoot.from(crdt1);
     expect(crdt2.map, {'key': 'value1'});
 
     crdt2.getRecord('key')!.value = 'value2';
@@ -120,9 +120,9 @@ void main() {
   });
 
   test('clone custom clone value', () {
-    final crdt1 = MapCrdt<String, ValueType>('node1');
+    final crdt1 = MapCrdtRoot<String, ValueType>('node1');
     crdt1.put('key', ValueType('value1'));
-    final crdt2 = MapCrdt<String, ValueType>.from(
+    final crdt2 = MapCrdtRoot<String, ValueType>.from(
       crdt1,
       cloneValue: (v) => ValueType(v.value),
     );
@@ -133,9 +133,9 @@ void main() {
   });
 
   test('clone custom clone key', () {
-    final crdt1 = MapCrdt<ValueType, String>('node1');
+    final crdt1 = MapCrdtRoot<ValueType, String>('node1');
     crdt1.put(ValueType('key'), 'value1');
-    final crdt2 = MapCrdt<ValueType, String>.from(
+    final crdt2 = MapCrdtRoot<ValueType, String>.from(
       crdt1,
       cloneKey: (k) => ValueType(k.value),
     );
@@ -146,7 +146,7 @@ void main() {
   });
 
   test('values', () {
-    final crdt1 = MapCrdt<String, String>('node1');
+    final crdt1 = MapCrdtRoot<String, String>('node1');
     expect(crdt1.values, []);
     crdt1.put('key1', 'value1');
     expect(crdt1.values, ['value1']);
@@ -157,43 +157,43 @@ void main() {
   });
 
   test('merge keep both', () {
-    final crdt1 = MapCrdt<String, String>('node1');
-    final crdt2 = MapCrdt<String, String>('node2');
+    final crdt1 = MapCrdtRoot<String, String>('node1');
+    final crdt2 = MapCrdtRoot<String, String>('node2');
     crdt1.put('key1', 'value1');
     crdt2.put('key2', 'value2');
 
-    crdt1.merge(MapCrdt.from(crdt2));
+    crdt1.merge(MapCrdtRoot.from(crdt2));
     expect(crdt1.map, {'key1': 'value1', 'key2': 'value2'});
     expect(crdt1.nodes, ['node1', 'node2']);
 
-    crdt2.merge(MapCrdt.from(crdt1));
+    crdt2.merge(MapCrdtRoot.from(crdt1));
     expect(crdt2.map, {'key1': 'value1', 'key2': 'value2'});
     expect(crdt2.nodes, ['node1', 'node2']);
   });
 
   test('merge keep more recent by timestamp', () async {
-    final crdt1 = MapCrdt<String, String>('node1');
-    final crdt2 = MapCrdt<String, String>('node2');
+    final crdt1 = MapCrdtRoot<String, String>('node1');
+    final crdt2 = MapCrdtRoot<String, String>('node2');
     crdt1.put('key1', 'value1');
     await Future.delayed(Duration(milliseconds: 10));
     crdt2.put('key1', 'value2');
 
-    crdt1.merge(MapCrdt.from(crdt2));
+    crdt1.merge(MapCrdtRoot.from(crdt2));
     expect(crdt1.map, {'key1': 'value2'});
     expect(crdt1.nodes, ['node1', 'node2']);
 
-    crdt2.merge(MapCrdt.from(crdt1));
+    crdt2.merge(MapCrdtRoot.from(crdt1));
     expect(crdt2.map, {'key1': 'value2'});
     expect(crdt2.nodes, ['node1', 'node2']);
   });
 
   test('merge use timestamp in concurrent changes', () async {
-    final crdt1 = MapCrdt<String, String>('node1');
-    final crdt2 = MapCrdt<String, String>('node2');
-    final crdt3 = MapCrdt<String, String>('node3');
+    final crdt1 = MapCrdtRoot<String, String>('node1');
+    final crdt2 = MapCrdtRoot<String, String>('node2');
+    final crdt3 = MapCrdtRoot<String, String>('node3');
     crdt1.put('key1', 'value1');
-    crdt2.merge(MapCrdt.from(crdt1));
-    crdt3.merge(MapCrdt.from(crdt1));
+    crdt2.merge(MapCrdtRoot.from(crdt1));
+    crdt3.merge(MapCrdtRoot.from(crdt1));
 
     for (var i = 0; i < 10; i++) {
       crdt3.put('key1', 'value3');
@@ -201,16 +201,16 @@ void main() {
     await Future.delayed(Duration(milliseconds: 10));
     crdt2.put('key1', 'value2');
 
-    crdt1.merge(MapCrdt.from(crdt3));
-    crdt1.merge(MapCrdt.from(crdt2));
+    crdt1.merge(MapCrdtRoot.from(crdt3));
+    crdt1.merge(MapCrdtRoot.from(crdt2));
 
     expect(crdt1.map, {'key1': 'value2'});
     expect(crdt1.nodes, ['node1', 'node2', 'node3']);
   });
 
   test('merge timestamp initial tiebreak', () async {
-    final crdt1 = MapCrdt<String, String>('node1');
-    final crdt2 = MapCrdt<String, String>('node2');
+    final crdt1 = MapCrdtRoot<String, String>('node1');
+    final crdt2 = MapCrdtRoot<String, String>('node2');
 
     final setTimestamp = (Record<String> record, int timestamp) {
       record.clock = DistributedClock(
@@ -226,17 +226,17 @@ void main() {
     crdt2.put('key1', 'value2');
     setTimestamp(crdt2.getRecord('key1')!, timestamp);
 
-    crdt1.merge(MapCrdt.from(crdt2));
+    crdt1.merge(MapCrdtRoot.from(crdt2));
     expect(crdt1.map, {'key1': 'value2'});
   });
 
   test('merge use vector clock', () async {
-    final crdt1 = MapCrdt<String, String>('node1');
-    final crdt2 = MapCrdt<String, String>('node2');
+    final crdt1 = MapCrdtRoot<String, String>('node1');
+    final crdt2 = MapCrdtRoot<String, String>('node2');
 
     final timestamp = DateTime.now().millisecondsSinceEpoch;
     crdt2.put('key1', 'value2');
-    crdt1.merge(MapCrdt.from(crdt2));
+    crdt1.merge(MapCrdtRoot.from(crdt2));
     expect(crdt1.map, {'key1': 'value2'});
 
     crdt1.put('key1', 'value1');
@@ -246,7 +246,7 @@ void main() {
       timestamp - 100,
       record1.clock.node,
     );
-    crdt2.merge(MapCrdt.from(crdt1));
+    crdt2.merge(MapCrdtRoot.from(crdt1));
 
     expect(crdt2.map, {'key1': 'value1'});
   });
@@ -256,7 +256,7 @@ void main() {
       VectorClock(1),
       'node1',
     );
-    final crdt = MapCrdt<String, String>(
+    final crdt = MapCrdtRoot<String, String>(
       'node1',
       vectorClock: VectorClock.fromList([1]),
       records: <String, Record<String>>{
@@ -295,7 +295,7 @@ void main() {
         },
       },
     };
-    final crdt = MapCrdt<String, String>.fromJson(json);
+    final crdt = MapCrdtRoot<String, String>.fromJson(json);
     expect(crdt.vectorClock, VectorClock.fromList([1]));
     expect(crdt.nodes, ['node1']);
     expect(crdt.map, {'key': 'value'});
@@ -312,7 +312,7 @@ void main() {
       VectorClock(1),
       'node1',
     );
-    final crdt = MapCrdt<String, ValueType>(
+    final crdt = MapCrdtRoot<String, ValueType>(
       'node1',
       vectorClock: VectorClock.fromList([1]),
       records: <String, Record<ValueType>>{
@@ -361,7 +361,7 @@ void main() {
       },
     };
     // ignore: prefer-trailing-comma
-    final crdt = MapCrdt<String, ValueType>.fromJson(
+    final crdt = MapCrdtRoot<String, ValueType>.fromJson(
       json,
       valueDecode: (valueJson) => ValueType(valueJson['value']),
     );
