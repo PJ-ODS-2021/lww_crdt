@@ -93,8 +93,6 @@ abstract class _MapCrdtBase<K, V> implements MapCrdt<K, V> {
     VectorClock vectorClock,
     MapCrdtRoot root,
   ) {
-    print('own records: $records');
-    print('other records: ${other.records}');
     final updatedRecords = other.records
       ..removeWhere((key, record) {
         vectorClock.merge(record.clock.vectorClock);
@@ -105,7 +103,6 @@ abstract class _MapCrdtBase<K, V> implements MapCrdt<K, V> {
         final localValue = localRecord.value;
         if (localValue is MapCrdt &&
             value.runtimeType == localValue.runtimeType) {
-          print('merging $key: $localValue with $value');
           localValue.merge(value as MapCrdt);
 
           return true;
@@ -120,7 +117,6 @@ abstract class _MapCrdtBase<K, V> implements MapCrdt<K, V> {
       })
       ..map((key, value) =>
           MapEntry(key, _updateNodeParentIfNecessary(value, root)));
-    print('updated records: $updatedRecords');
     _records.addAll(updatedRecords);
   }
 

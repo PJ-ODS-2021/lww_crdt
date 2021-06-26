@@ -174,7 +174,6 @@ void main() {
       await Future.delayed(Duration(milliseconds: 10));
       crdt2Node.put('key', 'value');
 
-      print('== merging again');
       crdt1.merge(_deepCloneCrdt(crdt2));
       expect(crdt1.map.keys.toSet(), {'node'});
       expect(crdt1.map['node']?.map, {'key': 'value'});
