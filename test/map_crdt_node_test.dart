@@ -404,4 +404,24 @@ void main() {
       },
     );
   });
+
+  test('map crdt mixed node merge', () {
+    final crdt1 = MapCrdtRoot<String, dynamic>('node1');
+    final crdt2 = MapCrdtRoot<String, dynamic>('node2');
+    final crdt1Node = MapCrdtNode<String, String>(crdt1);
+    final crdt2Node = MapCrdtNode<String, String>(crdt2);
+    crdt1.put('node', crdt1Node);
+    crdt2.put('node', crdt2Node);
+    crdt1.put('title1', 'this is title 1');
+    crdt2.put('title2', 'this is title 2');
+    crdt1Node.put('key1', 'value1');
+    crdt2Node.put('key2', 'value2');
+
+    crdt1.merge(crdt2);
+    expect(crdt1.map.keys.toSet(), {'node', 'title1', 'title2'});
+    expect(crdt1Node.map, {'key1': 'value1', 'key2': 'value2'});
+    expect(crdt1.get('node')?.map, {'key1': 'value1', 'key2': 'value2'});
+    expect(crdt1.get('title1'), 'this is title 1');
+    expect(crdt1.get('title2'), 'this is title 2');
+  });
 }
