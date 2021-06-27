@@ -2,6 +2,10 @@ import 'vector_clock.dart';
 import 'record.dart';
 
 abstract class MapCrdt<K, V> {
+  /// Get the root node of this crdt if it is part of a tree.
+  /// Returns [this] if the node itself is the root.
+  MapCrdt get root;
+
   /// Get all recods
   Map<K, Record<V>> get records;
 
@@ -45,6 +49,10 @@ abstract class MapCrdt<K, V> {
 
   /// Add or replace a record
   void putRecord(K key, Record<V> record, {bool validateRecord = true});
+
+  /// Validate if [record] seems to be compatible with this crdt map.
+  /// Throws an ArgumentError if it is not compatible.
+  void validateRecord(Record record);
 
   /// Add or replace an entry for [key].
   /// If [value] is null, the record for [key] will be marked as deleted.

@@ -140,6 +140,27 @@ abstract class _MapCrdtBase<K, V> implements MapCrdt<K, V> {
     });
   }
 
+  void _validateRecord(Record record, MapCrdtRoot root) {
+    if (!containsNode(record.clock.node)) {
+      throw ArgumentError(
+        'node list doesn\'t contain the node of the record',
+      );
+    }
+    if (record.clock.vectorClock.numNodes != vectorClock.numNodes) {
+      throw ArgumentError(
+        'record vector clock does not have the same number of nodes as this crdt',
+      );
+    }
+    if (!record.isDeleted && record.value is MapCrdt) {
+      MapCrdt subRecord = record.value!;
+      if (subRecord.root != root) {
+        throw ArgumentError('a node has an invalid root node');
+      }
+      subRecord.records.values
+          .forEach((record) => subRecord.validateRecord(record));
+    }
+  }
+
   @override
   void insertClockValue(int pos, [int initialClockValue = 0]) {
     _records.values.forEach((record) {

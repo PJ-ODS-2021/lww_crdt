@@ -51,6 +51,9 @@ class MapCrdtRoot<K, V> extends _MapCrdtBase<K, V> {
         super.from(other, cloneKey: cloneKey, cloneValue: cloneValue);
 
   @override
+  MapCrdtRoot<K, V> get root => this;
+
+  @override
   List<String> get nodes => UnmodifiableListView(_nodes);
 
   @override
@@ -64,9 +67,12 @@ class MapCrdtRoot<K, V> extends _MapCrdtBase<K, V> {
 
   @override
   void putRecord(K key, Record<V> record, {bool validateRecord = true}) {
-    if (validateRecord) _validateRecord(record);
+    if (validateRecord) this.validateRecord(record);
     _records[key] = record;
   }
+
+  @override
+  void validateRecord(Record record) => _validateRecord(record, this);
 
   @override
   void put(K key, V? value) {
@@ -107,21 +113,8 @@ class MapCrdtRoot<K, V> extends _MapCrdtBase<K, V> {
     _vectorClock.increment(_nodeClockIndex);
   }
 
-  void _validateRecord(Record record) {
-    if (!containsNode(record.clock.node)) {
-      throw ArgumentError(
-        'node list doesn\'t contain the node of the record',
-      );
-    }
-    if (record.clock.vectorClock.numNodes != _vectorClock.numNodes) {
-      throw ArgumentError(
-        'record vector clock does not have the same number of nodes as this crdt',
-      );
-    }
-  }
-
   void _validateRecords<S>(Map<S, Record> records) =>
-      _records.values.forEach(_validateRecord);
+      _records.values.forEach(validateRecord);
 
   Record<S> _makeRecord<S>(S? value) {
     return Record(
@@ -208,6 +201,7 @@ class MapCrdtNode<K, V> extends _MapCrdtBase<K, V> {
   })  : _root = parent ?? other._root,
         super.from(other, cloneKey: cloneKey, cloneValue: cloneValue);
 
+  @override
   MapCrdtRoot get root => _root;
 
   @override
@@ -230,8 +224,13 @@ class MapCrdtNode<K, V> extends _MapCrdtBase<K, V> {
 
   @override
   void putRecord(K key, Record<V> record, {bool validateRecord = true}) {
-    if (validateRecord) _root._validateRecord(record);
+    if (validateRecord) this.validateRecord(record);
     _records[key] = record;
+  }
+
+  @override
+  void validateRecord(Record record) {
+    _validateRecord(record, root);
   }
 
   @override
