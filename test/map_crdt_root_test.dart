@@ -259,6 +259,19 @@ void main() {
     expect(crdt2.map, {'key1': 'value1'});
   });
 
+  test('change node', () async {
+    final crdt1 = MapCrdtRoot<String, String>('node1');
+    crdt1.put('key1', 'value1');
+    crdt1.changeNode('newNode1');
+    expect(crdt1.node, 'newNode1');
+    expect(crdt1.nodes.toSet(), {'node1', 'newNode1'});
+    expect(
+      () => crdt1.records.values
+          .forEach((record) => crdt1.validateRecord(record)),
+      returnsNormally,
+    );
+  });
+
   test('to json', () {
     final node1Clock = DistributedClock.now(
       VectorClock(1),

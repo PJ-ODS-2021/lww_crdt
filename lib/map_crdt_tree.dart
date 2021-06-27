@@ -10,9 +10,9 @@ import 'map_crdt.dart';
 part 'map_crdt_base.dart';
 
 class MapCrdtRoot<K, V> extends _MapCrdtBase<K, V> {
-  final String _node;
   final List<String> _nodes;
   final VectorClock _vectorClock;
+  late String _node;
   late int _nodeClockIndex;
 
   MapCrdtRoot(
@@ -111,6 +111,15 @@ class MapCrdtRoot<K, V> extends _MapCrdtBase<K, V> {
     mergeNodes(other);
     _mergeRecords(other, _vectorClock, this);
     _vectorClock.increment(_nodeClockIndex);
+  }
+
+  /// Changes the internal node name
+  ///
+  /// The old node name will still be kept in the list of nodes.
+  void changeNode(String node) {
+    addNode(node);
+    _node = node;
+    _updateNodeClockIndex();
   }
 
   void _validateRecords<S>(Map<S, Record> records) =>
