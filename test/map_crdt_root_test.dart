@@ -2,6 +2,14 @@ import 'package:test/test.dart';
 import 'package:lww_crdt/lww_crdt.dart';
 import 'util/value_type.dart';
 
+void _setTimestamp(Record<String> record, int timestamp) {
+  record.clock = DistributedClock(
+    record.clock.vectorClock,
+    timestamp,
+    record.clock.node,
+  );
+}
+
 void main() {
   test('init with records', () {
     final crdt = MapCrdtRoot<String, String>(
@@ -220,19 +228,10 @@ void main() {
     final crdt1 = MapCrdtRoot<String, String>('node1');
     final crdt2 = MapCrdtRoot<String, String>('node2');
 
-    final setTimestamp = (Record<String> record, int timestamp) {
-      record.clock = DistributedClock(
-        record.clock.vectorClock,
-        timestamp,
-        record.clock.node,
-      );
-    };
-
-    final timestamp = DateTime.now().millisecondsSinceEpoch;
     crdt1.put('key1', 'value1');
-    setTimestamp(crdt1.getRecord('key1')!, timestamp - 100);
+    _setTimestamp(crdt1.getRecord('key1')!, 0);
     crdt2.put('key1', 'value2');
-    setTimestamp(crdt2.getRecord('key1')!, timestamp);
+    _setTimestamp(crdt2.getRecord('key1')!, 1);
 
     crdt1.merge(MapCrdtRoot.from(crdt2));
     expect(crdt1.map, {'key1': 'value2'});
@@ -242,18 +241,12 @@ void main() {
     final crdt1 = MapCrdtRoot<String, String>('node1');
     final crdt2 = MapCrdtRoot<String, String>('node2');
 
-    final timestamp = DateTime.now().millisecondsSinceEpoch;
     crdt2.put('key1', 'value2');
     crdt1.merge(MapCrdtRoot.from(crdt2));
     expect(crdt1.map, {'key1': 'value2'});
 
     crdt1.put('key1', 'value1');
-    final record1 = crdt1.getRecord('key1')!;
-    record1.clock = DistributedClock(
-      record1.clock.vectorClock,
-      timestamp - 100,
-      record1.clock.node,
-    );
+    _setTimestamp(crdt1.getRecord('key1')!, 0);
     crdt2.merge(MapCrdtRoot.from(crdt1));
 
     expect(crdt2.map, {'key1': 'value1'});
