@@ -95,7 +95,6 @@ abstract class _MapCrdtBase<K, V> implements MapCrdt<K, V> {
   ) {
     final updatedRecords = other.records
       ..removeWhere((key, record) {
-        vectorClock.merge(record.clock.vectorClock);
         final localRecord = _records[key];
 
         if (localRecord == null) return false;

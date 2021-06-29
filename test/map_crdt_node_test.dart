@@ -197,6 +197,21 @@ void main() {
     expect(crdt1Node.map, {'key2': 'value2'});
   });
 
+  test('vector clock merge with node', () async {
+    final crdt1 = MapCrdtRoot<String, MapCrdtNode<String, String>>('node1');
+    final crdt1Node = MapCrdtNode<String, String>(crdt1);
+    final crdt2 = MapCrdtRoot<String, MapCrdtNode<String, String>>('node2');
+    crdt1.put('node', crdt1Node);
+    crdt1Node.put('key', 'value');
+    crdt2.merge(crdt1);
+    final crdt1ClockValue = crdt1.vectorClock.value[crdt1.vectorClockIndex];
+    expect(crdt2.vectorClock.value.length, 2);
+    expect(
+      crdt2.vectorClock.value[(crdt2.vectorClockIndex + 1) % 2],
+      crdt1ClockValue,
+    );
+  });
+
   test('map crdt node to json', () {
     final crdt = MapCrdtRoot<String, MapCrdtNode<String, String>>('node1');
     final crdtNode = MapCrdtNode<String, String>(crdt);

@@ -66,6 +66,9 @@ class MapCrdtRoot<K, V> extends _MapCrdtBase<K, V> {
   VectorClock get vectorClock => _vectorClock;
 
   @override
+  int get vectorClockIndex => _nodeClockIndex;
+
+  @override
   void putRecord(K key, Record<V> record, {bool validateRecord = true}) {
     if (validateRecord) this.validateRecord(record);
     _records[key] = record;
@@ -109,6 +112,7 @@ class MapCrdtRoot<K, V> extends _MapCrdtBase<K, V> {
   @override
   void merge(MapCrdt<K, V> other) {
     mergeNodes(other);
+    _vectorClock.merge(other.vectorClock);
     _mergeRecords(other, _vectorClock, this);
     _vectorClock.increment(_nodeClockIndex);
   }
@@ -224,6 +228,9 @@ class MapCrdtNode<K, V> extends _MapCrdtBase<K, V> {
 
   @override
   VectorClock get vectorClock => _root.vectorClock;
+
+  @override
+  int get vectorClockIndex => _root.vectorClockIndex;
 
   @override
   void merge(MapCrdt<K, V> other, {bool mergeParentNodes = true}) {

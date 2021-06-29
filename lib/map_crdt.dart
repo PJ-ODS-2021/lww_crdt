@@ -33,6 +33,9 @@ abstract class MapCrdt<K, V> {
   /// The current vector clock of this node
   VectorClock get vectorClock;
 
+  /// Get the vector clock index of this crdt
+  int get vectorClockIndex;
+
   /// Update all records using the [updateRecord] function
   ///
   /// This function can be used to deep clone MapCrdt with MapCrdtNode values.

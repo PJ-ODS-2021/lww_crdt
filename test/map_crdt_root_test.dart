@@ -237,7 +237,7 @@ void main() {
     expect(crdt1.map, {'key1': 'value2'});
   });
 
-  test('merge use vector clock', () async {
+  test('merge use vector clock (node idle)', () async {
     final crdt1 = MapCrdtRoot<String, String>('node1');
     final crdt2 = MapCrdtRoot<String, String>('node2');
 
@@ -252,6 +252,25 @@ void main() {
     expect(crdt2.map, {'key1': 'value1'});
   });
 
+  test('merge use vector clock (node busy)', () {
+    final crdt1 = MapCrdtRoot<String, String>('node1');
+    final crdt2 = MapCrdtRoot<String, String>('node2');
+
+    crdt1.put('key', 'value');
+    crdt2.merge(MapCrdtRoot.from(crdt1));
+
+    for (var i = 0; i < 10; i++) {
+      crdt1.put('unrelated key', 'unrelated value');
+    }
+    crdt2.put('key', 'new value');
+    _setTimestamp(crdt1.getRecord('key')!, 0);
+
+    crdt1.merge(MapCrdtRoot.from(crdt2));
+    expect(crdt1.map, {'unrelated key': 'unrelated value', 'key': 'new value'});
+    crdt2.merge(MapCrdtRoot.from(crdt1));
+    expect(crdt2.map, {'unrelated key': 'unrelated value', 'key': 'new value'});
+  });
+
   test('change node', () async {
     final crdt1 = MapCrdtRoot<String, String>('node1');
     crdt1.put('key1', 'value1');
@@ -262,6 +281,19 @@ void main() {
       () => crdt1.records.values
           .forEach((record) => crdt1.validateRecord(record)),
       returnsNormally,
+    );
+  });
+
+  test('vector clock merge', () async {
+    final crdt1 = MapCrdtRoot<String, String>('node1');
+    final crdt2 = MapCrdtRoot<String, String>('node2');
+    crdt1.put('key', 'value');
+    crdt2.merge(crdt1);
+    final crdt1ClockValue = crdt1.vectorClock.value[crdt1.vectorClockIndex];
+    expect(crdt2.vectorClock.value.length, 2);
+    expect(
+      crdt2.vectorClock.value[(crdt2.vectorClockIndex + 1) % 2],
+      crdt1ClockValue,
     );
   });
 
