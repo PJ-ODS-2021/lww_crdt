@@ -22,8 +22,9 @@ class MapCrdtRoot<K, V> extends _MapCrdtBase<K, V> {
     Map<K, Record<V>>? records,
     bool validateRecords = true,
   })  : _nodes = nodes != null ? List.from(nodes) : [_node],
-        _vectorClock =
-            vectorClock ?? VectorClock(nodes == null ? 1 : nodes.length),
+        _vectorClock = vectorClock == null
+            ? VectorClock(nodes == null ? 1 : nodes.length)
+            : VectorClock.from(vectorClock),
         super(records ?? {}) {
     if (_vectorClock.numNodes != _nodes.length) {
       throw ArgumentError('vector clock has invalid number of nodes');
@@ -124,6 +125,19 @@ class MapCrdtRoot<K, V> extends _MapCrdtBase<K, V> {
     addNode(node);
     _node = node;
     _updateNodeClockIndex();
+  }
+
+  bool canContainChangesFor(MapCrdtRoot other) {
+    final tmp = MapCrdtRoot(
+      node,
+      nodes: nodes.toSet(),
+      vectorClock: vectorClock,
+    );
+    other.nodes.forEach(tmp.addNode);
+    if (!ListEquality().equals(other.nodes, tmp.nodes)) return true;
+    final clockCmp = tmp.vectorClock.partialCompareTo(other.vectorClock);
+
+    return clockCmp == null || clockCmp > 0;
   }
 
   void _validateRecords<S>(Map<S, Record> records) =>

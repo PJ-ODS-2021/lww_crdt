@@ -284,6 +284,28 @@ void main() {
     );
   });
 
+  test('can contain changes', () async {
+    final crdt1 = MapCrdtRoot<String, String>('node1');
+    final crdt2 = MapCrdtRoot<String, String>('node2');
+    expect(crdt1.canContainChangesFor(crdt2), true);
+    expect(crdt2.canContainChangesFor(crdt1), true);
+    crdt1.put('key', 'value');
+    expect(crdt1.canContainChangesFor(crdt2), true);
+    expect(crdt2.canContainChangesFor(crdt1), true);
+
+    crdt2.merge(MapCrdtRoot.from(crdt1));
+    expect(crdt2.canContainChangesFor(crdt1), true);
+    expect(crdt1.canContainChangesFor(crdt2), false);
+
+    crdt2.put('key2', 'value2');
+    expect(crdt2.canContainChangesFor(crdt1), true);
+    expect(crdt1.canContainChangesFor(crdt2), false);
+
+    crdt1.put('key3', 'value3');
+    expect(crdt2.canContainChangesFor(crdt1), true);
+    expect(crdt1.canContainChangesFor(crdt2), true);
+  });
+
   test('vector clock merge', () async {
     final crdt1 = MapCrdtRoot<String, String>('node1');
     final crdt2 = MapCrdtRoot<String, String>('node2');
